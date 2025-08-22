@@ -1,0 +1,10 @@
+# Configuration Files - thar be secrets
+config.ini
+gcal_creds.json
+token.json
+
+# Python Junk
+__pycache__/*
+
+# VS Code
+.vscode/*
