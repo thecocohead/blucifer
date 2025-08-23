@@ -29,43 +29,38 @@ tree = discord.app_commands.CommandTree(client)
     # ON CALL : 8
     # VENDOR : 9
 
-async def addUserToThread(button):
+async def addUserToThread(message, user):
         # add user to thread
-        # get base message
-        message = button.message
         # get thread
         thread = message.thread
-        await thread.add_user(button.user)
+        await thread.add_user(user)
 
-async def addUserToEmbed(button, slot):
-    # get base message & embed
-    message = button.message
+async def addUserToEmbed(message, slot, user):
+    # get embed
     embed = message.embeds[0]
     # temporarily store embed into dictionary 
     embedDict = embed.to_dict()
     
     # check if user exists in embed, and if they do remove them from the old role
-    if not await getUserCurrentRole(button) == -1:
-        await removeUserFromEmbed(button)
+    if not await getUserCurrentRole(user, message) == -1:
+        await removeUserFromEmbed(user, message)
 
     #recalculate and change count of users 
     currentCount = int(re.search(r'\d+', embed.fields[0].value).group())
     currentCount += 1
     # change fields
     embedDict['fields'][0]['value'] = f":busts_in_silhouette: {currentCount}"
-    embedDict['fields'][slot]['value'] = embedDict['fields'][slot]['value'] + f"\n<@{button.user.id}>"
+    embedDict['fields'][slot]['value'] = embedDict['fields'][slot]['value'] + f"\n<@{user.id}>"
     # send new embed for edit
     newEmbed = discord.Embed.from_dict(embedDict)
     await message.edit(embed=newEmbed)
     
-async def getUserCurrentRole(button):
-    userID = button.user.id
-    message = button.message
+async def getUserCurrentRole(user, message):
     embed = message.embeds[0]
     fields = embed.fields
     currentField = 0
     for field in fields:
-        if str(userID) in field.value:
+        if str(user.id) in field.value:
             # User is listed in current field
             return currentField
         else:
@@ -73,14 +68,12 @@ async def getUserCurrentRole(button):
     # User not found
     return -1
 
-async def removeUserFromEmbed(button):
-    userID = button.user.id
-    message = button.message
+async def removeUserFromEmbed(user, message):
     embed = message.embeds[0]
     fields = embed.fields
     embedDict = embed.to_dict()
     
-    targetField = await getUserCurrentRole(button)
+    targetField = await getUserCurrentRole(user, message)
 
     if not targetField == -1:
         # decrement signups
@@ -90,7 +83,7 @@ async def removeUserFromEmbed(button):
         embedDict['fields'][0]['value'] = f":busts_in_silhouette: {currentCount}"
         
         # evil regex fuckery to remove user from role
-        newValue = re.sub(f"<@102080114975588352>(\\n)?", "", embedDict['fields'][targetField]['value'])
+        newValue = re.sub(f"<@{user.id}>(\\n)?", "", embedDict['fields'][targetField]['value'])
         embedDict['fields'][targetField]['value'] = newValue
 
         # send new embed for edit
@@ -105,55 +98,63 @@ class ThreadView(discord.ui.View):
 
     @discord.ui.button(label="Booker", emoji="<:7th_Mammoth:858151066679640074>", row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
     async def bookerButtonCallback(self, button, interaction):
-        await addUserToThread(button)
-        await addUserToEmbed(button, 3)
+        message = button.message
+        await addUserToThread(message, button.user)
+        await addUserToEmbed(message, 3, button.user)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
     @discord.ui.button(label="Door", emoji="<:7CDoor:857389356893339648>", row=0, style=discord.ButtonStyle.primary, custom_id="doorButton")
     async def doorButtonCallback(self, button, interaction):
-        await addUserToThread(button)
-        await addUserToEmbed(button, 4)
+        message = button.message
+        await addUserToThread(message, button.user)
+        await addUserToEmbed(message, 4, button.user)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
     @discord.ui.button(label="Sound", emoji="<:7CSound:857389356837765140>", row=0, style=discord.ButtonStyle.primary, custom_id="soundButton")
     async def soundButtonCallback(self, button, interaction):
-        await addUserToThread(button)
-        await addUserToEmbed(button, 5)
+        message = button.message
+        await addUserToThread(message, button.user)
+        await addUserToEmbed(message, 5, button.user)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
     @discord.ui.button(label="Door Training", emoji="📖", row=1, style=discord.ButtonStyle.primary, custom_id="doorTrainingButton")
     async def doorTrainingButtonCallback(self, button, interaction):
-        await addUserToThread(button)
-        await addUserToEmbed(button, 6)
+        message = button.message
+        await addUserToThread(message, button.user)
+        await addUserToEmbed(message, 6, button.user)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
     @discord.ui.button(label="Sound Training", emoji="📖", row=1, style=discord.ButtonStyle.primary, custom_id="soundTrainingButton")
     async def soundTrainingButtonCallback(self, button, interaction):
-        await addUserToThread(button)
-        await addUserToEmbed(button, 7)
+        message = button.message
+        await addUserToThread(message, button.user)
+        await addUserToEmbed(message, 7, button.user)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
     @discord.ui.button(label="On Call", emoji="☎️", row=1, style=discord.ButtonStyle.primary, custom_id="onCallButton")
     async def onCallButtonCallback(self, button, interaction):
-        await addUserToThread(button)
-        await addUserToEmbed(button, 8)
+        message = button.message
+        await addUserToThread(message, button.user)
+        await addUserToEmbed(message, 8, button.user)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
         
     @discord.ui.button(label="Vendor", emoji="🤝", row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
     async def vendorButtonCallback(self, button, interaction):
-        await addUserToThread(button)
-        await addUserToEmbed(button, 9)
+        message = button.message
+        await addUserToThread(message, button.user)
+        await addUserToEmbed(message, 9, button.user)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
         
     @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger, custom_id="RemoveButton")
     async def removeButtonCallback(self, button, interaction):
+        message = button.message
         # check if user is in thread
-        if await getUserCurrentRole(button) == -1:
+        if await getUserCurrentRole(button.user, button.message) == -1:
             # user not in thread
             await button.response.send_message("You aren't in the thread.", ephemeral=True)
         else:
             # remove user from embed
-            await removeUserFromEmbed(button)
+            await removeUserFromEmbed(button.user, button.message)
             # remove user from thread
             # get base message
             message = button.message
@@ -250,6 +251,8 @@ async def upcoming(interaction: discord.Interaction):
             embed.add_field(name=event['summary'],
                             value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>", 
                             inline = False)
+            
+        embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
 
     # Send result
     await interaction.followup.send(embed=embed)
@@ -343,5 +346,54 @@ async def threads(interaction: discord.Interaction):
     
     # Send closing message
     await interaction.followup.send(f"{createdThreads} thread(s) were created successfully. {ignoredEvents} calendar events were ignored.", ephemeral=True)
+
+# Add User Command
+@discord.app_commands.choices(role=[
+    discord.app_commands.Choice(name="Booker", value="3"),
+    discord.app_commands.Choice(name="Door", value="4"),
+    discord.app_commands.Choice(name="Sound", value="5"),
+    discord.app_commands.Choice(name="Door Training", value="6"),
+    discord.app_commands.Choice(name="Sound Training", value="7"),
+    discord.app_commands.Choice(name="On Call", value="8"),
+    discord.app_commands.Choice(name="Vendor", value="9"),
+])
+@tree.command(name="adduser", description="Add a user to a show thread")
+async def adduser(interaction: discord.Interaction, user: discord.Member, thread: str, role: str):
+    # Check if user can run command
+    userRoles = [role.name for role in interaction.user.roles]
+    if botAdminRole not in userRoles:
+        await interaction.response.send_message(f"You must have the {botAdminRole} role to use this command.", ephemeral=True)
+        return
+    
+    # Tell discord we're thinking
+    await interaction.response.defer(ephemeral=True)
+
+    # Thread can only be in the specified threads channel. 
+    channel = client.get_channel(int(threadsChannel))
+
+    # Find thread
+    try:
+        message = await channel.fetch_message(int(thread))
+    except:
+        # thread is not found
+        await interaction.followup.send(f"Thread not found.")
+        return
+
+    # thread is found
+
+    # check if user is already in thread
+    if await getUserCurrentRole(user, message) == int(role):
+        # user is already in thread as selected role
+        await interaction.followup.send(f"<@{user.id}> is already in the thread as selected role.")
+        return
+    elif await getUserCurrentRole(user, message) != -1:
+        # user is in thread, but in a different role
+        await removeUserFromEmbed(user, message)
+    
+    await addUserToThread(message, user)
+    await addUserToEmbed(message, int(role), user)
+    await interaction.followup.send(f"Added <@{user.id}> to the thread.")
+    return
+
 
 client.run(botToken)
