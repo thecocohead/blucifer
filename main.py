@@ -161,8 +161,6 @@ class ThreadView(discord.ui.View):
             thread = message.thread
             await thread.remove_user(button.user)
             await button.response.send_message("Removed you from the show thread.", ephemeral=True)
-            
-
 
 # Sync Command Tree with Discord when connected
 @client.event
@@ -206,7 +204,8 @@ async def upcoming(interaction: discord.Interaction):
                         foundThread = {
                             "etag": eventETAG,
                             "summary": searchEmbed.title,
-                            "url": message.jump_url
+                            "url": message.jump_url, 
+                            "fields": message.embeds[0].fields,
                         }
                         threads.append(foundThread)
 
@@ -222,8 +221,30 @@ async def upcoming(interaction: discord.Interaction):
         startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
         startTimeUNIXSeconds = int(startTime.timestamp())
         if foundThreadDict:
+            # Get volunteer counts
+            bookerCount = 0
+            doorCount = 0
+            soundCount = 0
+            bookerCount += foundThreadDict['fields'][3].value.count('@') # Add number of bookers
+            doorCount += foundThreadDict['fields'][4].value.count('@') # Add number of door volunteers
+            soundCount += foundThreadDict['fields'][5].value.count('@') # Add number of sound volunteers
+            doorCount += foundThreadDict['fields'][6].value.count('@') # Add number of door trainees
+            soundCount += foundThreadDict['fields'][7].value.count('@') # Add number of sound trainees
+
+            # Create string of emojis representing needed volunteers
+            neededVolunteerString = ""
+            if bookerCount == 0:
+                neededVolunteerString += "<:7th_Mammoth:858151066679640074> "
+            if doorCount == 0:
+                neededVolunteerString += "<:7CDoor:857389356893339648> <:7CDoor:857389356893339648> "
+            if doorCount == 1:
+                neededVolunteerString += "<:7CDoor:857389356893339648> "
+            if soundCount == 0:
+                neededVolunteerString += "<:7CSound:857389356837765140> "
+
+            # Put field together
             embed.add_field(name=event['summary'],
-                            value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {foundThreadDict['url']}", 
+                            value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {foundThreadDict['url']}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None!'}", 
                             inline = False)
         else:
             embed.add_field(name=event['summary'],
