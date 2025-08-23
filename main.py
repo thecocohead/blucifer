@@ -98,50 +98,54 @@ async def removeUserFromEmbed(button):
         await message.edit(embed=newEmbed)
 
 class ThreadView(discord.ui.View):
-    @discord.ui.button(label="Booker", emoji="<:7th_Mammoth:858151066679640074>", row=0, style=discord.ButtonStyle.primary)
+
+    # No Timeout
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Booker", emoji="<:7th_Mammoth:858151066679640074>", row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
     async def bookerButtonCallback(self, button, interaction):
-        print(button.message)
         await addUserToThread(button)
         await addUserToEmbed(button, 3)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
-    @discord.ui.button(label="Door", emoji="<:7CDoor:857389356893339648>", row=0, style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Door", emoji="<:7CDoor:857389356893339648>", row=0, style=discord.ButtonStyle.primary, custom_id="doorButton")
     async def doorButtonCallback(self, button, interaction):
         await addUserToThread(button)
         await addUserToEmbed(button, 4)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
-    @discord.ui.button(label="Sound", emoji="<:7CSound:857389356837765140>", row=0, style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Sound", emoji="<:7CSound:857389356837765140>", row=0, style=discord.ButtonStyle.primary, custom_id="soundButton")
     async def soundButtonCallback(self, button, interaction):
         await addUserToThread(button)
         await addUserToEmbed(button, 5)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
-    @discord.ui.button(label="Door Training", emoji="📖", row=1, style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Door Training", emoji="📖", row=1, style=discord.ButtonStyle.primary, custom_id="doorTrainingButton")
     async def doorTrainingButtonCallback(self, button, interaction):
         await addUserToThread(button)
         await addUserToEmbed(button, 6)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
-    @discord.ui.button(label="Sound Training", emoji="📖", row=1, style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Sound Training", emoji="📖", row=1, style=discord.ButtonStyle.primary, custom_id="soundTrainingButton")
     async def soundTrainingButtonCallback(self, button, interaction):
         await addUserToThread(button)
         await addUserToEmbed(button, 7)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
-    @discord.ui.button(label="On Call", emoji="☎️", row=1, style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="On Call", emoji="☎️", row=1, style=discord.ButtonStyle.primary, custom_id="onCallButton")
     async def onCallButtonCallback(self, button, interaction):
         await addUserToThread(button)
         await addUserToEmbed(button, 8)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
         
-    @discord.ui.button(label="Vendor", emoji="🤝", row=1, style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Vendor", emoji="🤝", row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
     async def vendorButtonCallback(self, button, interaction):
         await addUserToThread(button)
         await addUserToEmbed(button, 9)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
         
-    @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger, custom_id="RemoveButton")
     async def removeButtonCallback(self, button, interaction):
         # check if user is in thread
         if await getUserCurrentRole(button) == -1:
@@ -165,6 +169,8 @@ class ThreadView(discord.ui.View):
 async def on_ready():
     print(f'Logged in as {client.user}')
     await tree.sync(guild=None)
+    ThreadViewInstance = ThreadView()
+    client.add_view(ThreadViewInstance)
 
 # Upcoming Command
 @tree.command(name="upcoming", description="Display upcoming events")
