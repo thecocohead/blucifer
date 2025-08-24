@@ -20,22 +20,56 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
 
-# ROLES:
-    # BOOKER : 3
-    # DOOR : 4
-    # SOUND : 5
-    # TRAINING DOOR : 6
-    # TRAINING SOUND : 7
-    # ON CALL : 8
-    # VENDOR : 9
+"""
+WHAT ARE SHOW POSTS, EMBEDS, AND THREADS
+
+Show posts are made up of two components: The embed and the thread. 
+
+A Show Embed is the root message sent by the bot. It displays the event summary, current signups, and contains the view to sign up for the show. 
+A Show Thread is the discord thread that's created by the bot. The thread is where people can chat about the show itsself. 
+
+"""
+
+
+"""
+SHOW ROLES
+
+Show roles are given from the embed field number for the show. They are used for numberical identification throughout the bot.
+
+BOOKER : 3
+DOOR : 4
+SOUND : 5
+TRAINING DOOR : 6
+TRAINING SOUND : 7
+ON CALL : 8
+VENDOR : 9
+"""
+
 
 async def addUserToThread(message, user):
-        # add user to thread
-        # get thread
+        """
+        Adds the user to a show thread.
+
+        Arguments: 
+            Message - Discord.py message to add user to. This is the base of the thread- typically it's a show embed. 
+            User - Discord.py user that's being added to a thread 
+
+        Returns: None
+        """
         thread = message.thread
         await thread.add_user(user)
 
 async def addUserToEmbed(message, slot, user):
+    """
+    Adds the user to the show embed. This function edits the embed to add the user onto it. 
+
+    Arguments:
+        Message - Discord.py message to add the user to. For this function, we assume it's a show thread message.
+        Slot - Show role to add user to.
+        User - Discord.py user to add. 
+
+    Returns: None
+    """
     # get embed
     embed = message.embeds[0]
     # temporarily store embed into dictionary 
@@ -56,6 +90,15 @@ async def addUserToEmbed(message, slot, user):
     await message.edit(embed=newEmbed)
     
 async def getUserCurrentRole(user, message):
+    """
+    Gets the user's current role in a show embed if they are currently signed up. 
+
+    Arguments:
+        User - Discord.py user to search for. 
+        Message - Discord.py message to search. The message should be a show embed.  
+
+    Returns: int - show role id or -1 if user is not currently signed up.  
+    """
     embed = message.embeds[0]
     fields = embed.fields
     currentField = 0
@@ -69,6 +112,15 @@ async def getUserCurrentRole(user, message):
     return -1
 
 async def removeUserFromEmbed(user, message):
+    """
+    Removes a user from a show embed. 
+
+    Arguments:
+        User - Discord.py user to remove from the show embed
+        Message - Discord.py message to remove the user from. Should be a show embed. 
+
+    Returns: None
+    """
     embed = message.embeds[0]
     fields = embed.fields
     embedDict = embed.to_dict()
@@ -91,8 +143,11 @@ async def removeUserFromEmbed(user, message):
         await message.edit(embed=newEmbed)
 
 class ThreadView(discord.ui.View):
+    """
+    View to create show signup buttons for show embeds. Also handles users that press each button on a show thread to add them to a show embed & thread. 
+    """
 
-    # No Timeout
+    # Needed function for buttons to persist past bot reboot
     def __init__(self):
         super().__init__(timeout=None)
 
@@ -148,17 +203,39 @@ class ThreadView(discord.ui.View):
             await thread.remove_user(button.user)
             await button.response.send_message("Removed you from the show thread.", ephemeral=True)
 
-# Sync Command Tree with Discord when connected
 @client.event
 async def on_ready():
+    """
+    Ran when the bot connects to Discord. Prints to console that it connected successfully, syncs the command tree (all the slash commands used to interact with the bot), and adds the buttons above so they can be used past reboot. 
+
+    Arguments- None
+    Returns- None
+    """
     print(f'Logged in as {client.user}')
     await tree.sync(guild=None)
     ThreadViewInstance = ThreadView()
     client.add_view(ThreadViewInstance)
 
-# Upcoming Command
 @tree.command(name="upcoming", description="Display upcoming events")
 async def upcoming(interaction: discord.Interaction):
+    """
+    Handles /upcoming command. 
+
+    It creates a list of events from the google calendar with the following information:
+        Event summary (title of event from Google Calendar)
+        Date of event (both in absolute time and relative to current time)
+        Link to show thread, if one exists
+        Needed volunteers, if a show thread exists (Standard need requirements are one booker, two door volunteers, and one sound volunteer). Trainees are considered in their main role if signed up. (Door trainees are considered door volunteers and sound trainees are considered sound volunteers). 
+
+    The embed created has a title of "Upcoming Events" and the body of the embed consists of fields with one field per event. 
+
+    If the user is a bot admin as defined by the role in the config.ini file, the embed is sent to all users. Otherwise, it is sent ephemerally (to that user only).
+
+    Arguments - 
+        interaction: Discord.py interaction information
+
+    Returns - None
+    """
 
     # Prompt discord for the "Bot is thinking...." message
 
@@ -245,6 +322,35 @@ async def upcoming(interaction: discord.Interaction):
 # Threads Command
 @tree.command(name="threads", description="Create new show threads")
 async def threads(interaction: discord.Interaction):
+    """
+    Handles /threads command. 
+
+    Command requires user to be a bot admin, as defined by the role in the config.ini file.
+
+    If the user is a bot admin, /threads will create new show threads in the channel defined in the config.ini file. 
+    
+    To setup the event, each event has a unique etag as returned by Google. The etag changes every time the event is edited.
+
+    The bot checks over the last 100 messages to see if the etag is present in any embed in the defined thread channel. If the etag is present, it ignores the event as it assumes the show already has a thread. Otherwise, it continues to create the show embed and show thread. 
+
+    The show embeds include a title and 11 fields.
+        Field 0- number of people signed up for the show. 
+        Field 1- absolute start date of show
+        Field 2- relative start date of show
+        Field 3- Booker signups
+        Field 4- Door signups
+        Field 5- Sound signups
+        Field 6- Door Training signups
+        Field 7- Sound Training signups
+        Field 8- On-Call signups
+        Field 9- Vendor signups
+        Field 10- etag
+
+    Arguments:
+        interaction - Discord.py interaction information
+
+    Returns: None
+    """
 
     # Check if user can run command
     userRoles = [role.name for role in interaction.user.roles]
@@ -332,7 +438,7 @@ async def threads(interaction: discord.Interaction):
     # Send closing message
     await interaction.followup.send(f"{createdThreads} thread(s) were created successfully. {ignoredEvents} calendar events were ignored.", ephemeral=True)
 
-# Add User Command
+# Role choices for adduser command. 
 @discord.app_commands.choices(role=[
     discord.app_commands.Choice(name="Booker", value="3"),
     discord.app_commands.Choice(name="Door", value="4"),
@@ -342,8 +448,24 @@ async def threads(interaction: discord.Interaction):
     discord.app_commands.Choice(name="On Call", value="8"),
     discord.app_commands.Choice(name="Vendor", value="9"),
 ])
+
+
 @tree.command(name="adduser", description="Add a user to a show thread")
 async def adduser(interaction: discord.Interaction, user: discord.Member, thread: str, role: str):
+    """
+    Handles /adduser <user> <thread> <role>
+    
+    Command to forcefully add a user to a show thread. The command requires the user to have the bot admin role, as defined in config.ini. 
+
+    If the user is a bot admin, the mentioned user is added the mentioned thread as the mentioned role. 
+
+    Arguments:
+        User - Discord.py user object that is sent from the slash command argument. 
+        Thread - string that should be a discord message id of the show embed message.
+        Role - string of the role to add the user as. This is passed in as the "value" field of the choices above- most notably, it does NOT contain the textual description of the role but only contains the numerical value. The role ids are configured to match the show roles defined at the start of this file. 
+
+    Returns- None
+    """
     # Check if user can run command
     userRoles = [role.name for role in interaction.user.roles]
     if botAdminRole not in userRoles:
@@ -380,5 +502,6 @@ async def adduser(interaction: discord.Interaction, user: discord.Member, thread
     await interaction.followup.send(f"Added <@{user.id}> to the thread.")
     return
 
-
+# Start of "Main"
+# Connect to Discord
 client.run(botToken)
