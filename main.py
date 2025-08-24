@@ -96,54 +96,39 @@ class ThreadView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Booker", emoji="<:7th_Mammoth:858151066679640074>", row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
-    async def bookerButtonCallback(self, button, interaction):
+    async def userSignUp(button, slot):
         message = button.message
         await addUserToThread(message, button.user)
-        await addUserToEmbed(message, 3, button.user)
+        await addUserToEmbed(message, slot, button.user)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
+
+    @discord.ui.button(label="Booker", emoji="<:7th_Mammoth:858151066679640074>", row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
+    async def bookerButtonCallback(self, button, interaction):
+        await ThreadView.userSignUp(button, 3)
 
     @discord.ui.button(label="Door", emoji="<:7CDoor:857389356893339648>", row=0, style=discord.ButtonStyle.primary, custom_id="doorButton")
     async def doorButtonCallback(self, button, interaction):
-        message = button.message
-        await addUserToThread(message, button.user)
-        await addUserToEmbed(message, 4, button.user)
-        await button.response.send_message("Added you to the show thread!", ephemeral=True)
+        await ThreadView.userSignUp(button, 4)
 
     @discord.ui.button(label="Sound", emoji="<:7CSound:857389356837765140>", row=0, style=discord.ButtonStyle.primary, custom_id="soundButton")
     async def soundButtonCallback(self, button, interaction):
-        message = button.message
-        await addUserToThread(message, button.user)
-        await addUserToEmbed(message, 5, button.user)
-        await button.response.send_message("Added you to the show thread!", ephemeral=True)
+        await ThreadView.userSignUp(button, 5)
 
     @discord.ui.button(label="Door Training", emoji="📖", row=1, style=discord.ButtonStyle.primary, custom_id="doorTrainingButton")
     async def doorTrainingButtonCallback(self, button, interaction):
-        message = button.message
-        await addUserToThread(message, button.user)
-        await addUserToEmbed(message, 6, button.user)
-        await button.response.send_message("Added you to the show thread!", ephemeral=True)
+        await ThreadView.userSignUp(button, 6)
 
     @discord.ui.button(label="Sound Training", emoji="📖", row=1, style=discord.ButtonStyle.primary, custom_id="soundTrainingButton")
     async def soundTrainingButtonCallback(self, button, interaction):
-        message = button.message
-        await addUserToThread(message, button.user)
-        await addUserToEmbed(message, 7, button.user)
-        await button.response.send_message("Added you to the show thread!", ephemeral=True)
+        await ThreadView.userSignUp(button, 7)
 
     @discord.ui.button(label="On Call", emoji="☎️", row=1, style=discord.ButtonStyle.primary, custom_id="onCallButton")
     async def onCallButtonCallback(self, button, interaction):
-        message = button.message
-        await addUserToThread(message, button.user)
-        await addUserToEmbed(message, 8, button.user)
-        await button.response.send_message("Added you to the show thread!", ephemeral=True)
+        await ThreadView.userSignUp(button, 8)
         
     @discord.ui.button(label="Vendor", emoji="🤝", row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
     async def vendorButtonCallback(self, button, interaction):
-        message = button.message
-        await addUserToThread(message, button.user)
-        await addUserToEmbed(message, 9, button.user)
-        await button.response.send_message("Added you to the show thread!", ephemeral=True)
+        await ThreadView.userSignUp(button, 9)
         
     @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger, custom_id="RemoveButton")
     async def removeButtonCallback(self, button, interaction):
