@@ -61,7 +61,6 @@ ON CALL : 8
 VENDOR : 9
 """
 
-
 async def addUserToThread(message: discord.Message, user: discord.User) -> None:
         """
         Adds the user to a show thread.
@@ -157,6 +156,25 @@ async def removeUserFromEmbed(user: discord.User, message: discord.Message) -> N
         # send new embed for edit
         newEmbed = discord.Embed.from_dict(embedDict)
         await message.edit(embed=newEmbed)
+
+async def isUserBotAdmin(user: discord.User) -> bool:
+    """
+    Checks if the user has the bot admin role as specified in config file. 
+
+    Arguments-
+        user: discord.py user object to check
+
+    Returns - true if user has the specified bot administrator role, false otherwise. 
+    """
+
+    userRoles = [role.name for role in user.roles]
+    if botAdminRole in userRoles:
+        # user is a bot admin
+        return True
+    else: 
+        # user is not a bot admin
+        return False
+
 
 class ThreadView(discord.ui.View):
     """
@@ -257,13 +275,13 @@ async def upcoming(interaction: discord.Interaction) -> None:
 
     # If user has the botAdminRole, the message should be sent to all (not ephermerally)
     # otherwise, it's still ok to run, but it should be sent to the user only. (ephermerally)
-    userRoles = [role.name for role in interaction.user.roles]
-    if botAdminRole not in userRoles:
-        # User is not a bot admin
-        await interaction.response.defer(ephemeral=True)
-    else:
-        # User is a bot admin
+
+    if await isUserBotAdmin(interaction.user):
+        # user is a bot admin
         await interaction.response.defer(ephemeral=False)
+    else:
+        # user is not a bot admin
+        await interaction.response.defer(ephemeral=True)
     
     events = gcal.upcomingEvents(calendar_id)
 
@@ -369,10 +387,11 @@ async def threads(interaction: discord.Interaction) -> None:
     """
 
     # Check if user can run command
-    userRoles = [role.name for role in interaction.user.roles]
-    if botAdminRole not in userRoles:
+
+    if not await isUserBotAdmin(interaction.user):
+        # User is not a bot admin
         await interaction.response.send_message(f"You must have the {botAdminRole} role to use this command.", ephemeral=True)
-        return
+        return        
 
     # Prompt discord for the "Bot is thinking...." message
     await interaction.response.defer(ephemeral=True)
@@ -483,8 +502,7 @@ async def adduser(interaction: discord.Interaction, user: discord.Member, thread
     Returns- None
     """
     # Check if user can run command
-    userRoles = [role.name for role in interaction.user.roles]
-    if botAdminRole not in userRoles:
+    if not await isUserBotAdmin(interaction.user):
         await interaction.response.send_message(f"You must have the {botAdminRole} role to use this command.", ephemeral=True)
         return
     
