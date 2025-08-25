@@ -46,7 +46,7 @@ VENDOR : 9
 """
 
 
-async def addUserToThread(message, user):
+async def addUserToThread(message: discord.Message, user: discord.User) -> None:
         """
         Adds the user to a show thread.
 
@@ -59,7 +59,7 @@ async def addUserToThread(message, user):
         thread = message.thread
         await thread.add_user(user)
 
-async def addUserToEmbed(message, slot, user):
+async def addUserToEmbed(message: discord.Message, slot: int, user: discord.User) -> None:
     """
     Adds the user to the show embed. This function edits the embed to add the user onto it. 
 
@@ -89,7 +89,7 @@ async def addUserToEmbed(message, slot, user):
     newEmbed = discord.Embed.from_dict(embedDict)
     await message.edit(embed=newEmbed)
     
-async def getUserCurrentRole(user, message):
+async def getUserCurrentRole(user: discord.User, message: discord.Message) -> int:
     """
     Gets the user's current role in a show embed if they are currently signed up. 
 
@@ -111,7 +111,7 @@ async def getUserCurrentRole(user, message):
     # User not found
     return -1
 
-async def removeUserFromEmbed(user, message):
+async def removeUserFromEmbed(user: discord.User, message: discord.Message) -> None:
     """
     Removes a user from a show embed. 
 
@@ -151,42 +151,42 @@ class ThreadView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    async def userSignUp(button, slot):
+    async def userSignUp(button: discord.Button, slot: int) -> None:
         message = button.message
         await addUserToThread(message, button.user)
         await addUserToEmbed(message, slot, button.user)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
     @discord.ui.button(label="Booker", emoji="<:7th_Mammoth:858151066679640074>", row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
-    async def bookerButtonCallback(self, button, interaction):
+    async def bookerButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 3)
 
     @discord.ui.button(label="Door", emoji="<:7CDoor:857389356893339648>", row=0, style=discord.ButtonStyle.primary, custom_id="doorButton")
-    async def doorButtonCallback(self, button, interaction):
+    async def doorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 4)
 
     @discord.ui.button(label="Sound", emoji="<:7CSound:857389356837765140>", row=0, style=discord.ButtonStyle.primary, custom_id="soundButton")
-    async def soundButtonCallback(self, button, interaction):
+    async def soundButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 5)
 
     @discord.ui.button(label="Door Training", emoji="📖", row=1, style=discord.ButtonStyle.primary, custom_id="doorTrainingButton")
-    async def doorTrainingButtonCallback(self, button, interaction):
+    async def doorTrainingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 6)
 
     @discord.ui.button(label="Sound Training", emoji="📖", row=1, style=discord.ButtonStyle.primary, custom_id="soundTrainingButton")
-    async def soundTrainingButtonCallback(self, button, interaction):
+    async def soundTrainingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 7)
 
     @discord.ui.button(label="On Call", emoji="☎️", row=1, style=discord.ButtonStyle.primary, custom_id="onCallButton")
-    async def onCallButtonCallback(self, button, interaction):
+    async def onCallButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 8)
         
     @discord.ui.button(label="Vendor", emoji="🤝", row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
-    async def vendorButtonCallback(self, button, interaction):
+    async def vendorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 9)
         
     @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger, custom_id="RemoveButton")
-    async def removeButtonCallback(self, button, interaction):
+    async def removeButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         message = button.message
         # check if user is in thread
         if await getUserCurrentRole(button.user, button.message) == -1:
@@ -217,7 +217,7 @@ async def on_ready():
     client.add_view(ThreadViewInstance)
 
 @tree.command(name="upcoming", description="Display upcoming events")
-async def upcoming(interaction: discord.Interaction):
+async def upcoming(interaction: discord.Interaction) -> None:
     """
     Handles /upcoming command. 
 
@@ -321,7 +321,7 @@ async def upcoming(interaction: discord.Interaction):
 
 # Threads Command
 @tree.command(name="threads", description="Create new show threads")
-async def threads(interaction: discord.Interaction):
+async def threads(interaction: discord.Interaction) -> None:
     """
     Handles /threads command. 
 
@@ -451,7 +451,7 @@ async def threads(interaction: discord.Interaction):
 
 
 @tree.command(name="adduser", description="Add a user to a show thread")
-async def adduser(interaction: discord.Interaction, user: discord.Member, thread: str, role: str):
+async def adduser(interaction: discord.Interaction, user: discord.Member, thread: str, role: str) -> None:
     """
     Handles /adduser <user> <thread> <role>
     
