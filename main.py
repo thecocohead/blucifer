@@ -7,12 +7,28 @@ import re
 
 # Configuration Parsing
 config = configparser.ConfigParser()
-config.read('config.ini')
+config.read('config.ini', encoding='utf-8')
 
+# Discord bot token
 botToken = config['DISCORD']['token']
+
+# Channel to post show threads
 threadsChannel = config['DISCORD']['threadsChannel']
-calendar_id = config['CALENDAR']['id']
+
+# Administrator role name
 botAdminRole = config['DISCORD']['botAdminRole']
+
+# Emojis
+bookerEmoji = config['DISCORD']['bookerEmoji']
+doorEmoji = config['DISCORD']['doorEmoji']
+soundEmoji = config['DISCORD']['soundEmoji']
+doorTrainingEmoji = config['DISCORD']['doorTrainingEmoji']
+soundTrainingEmoji = config['DISCORD']['soundTrainingEmoji']
+onCallEmoji = config['DISCORD']['onCallEmoji']
+vendorEmoji = config['DISCORD']['vendorEmoji']
+
+# Google Calendar id 
+calendar_id = config['CALENDAR']['id']
 
 # Set up needed objects for Discord
 intents = discord.Intents.default()
@@ -157,31 +173,31 @@ class ThreadView(discord.ui.View):
         await addUserToEmbed(message, slot, button.user)
         await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
-    @discord.ui.button(label="Booker", emoji="<:7th_Mammoth:858151066679640074>", row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
+    @discord.ui.button(label="Booker", emoji=bookerEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
     async def bookerButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 3)
 
-    @discord.ui.button(label="Door", emoji="<:7CDoor:857389356893339648>", row=0, style=discord.ButtonStyle.primary, custom_id="doorButton")
+    @discord.ui.button(label="Door", emoji=doorEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="doorButton")
     async def doorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 4)
 
-    @discord.ui.button(label="Sound", emoji="<:7CSound:857389356837765140>", row=0, style=discord.ButtonStyle.primary, custom_id="soundButton")
+    @discord.ui.button(label="Sound", emoji=soundEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="soundButton")
     async def soundButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 5)
 
-    @discord.ui.button(label="Door Training", emoji="📖", row=1, style=discord.ButtonStyle.primary, custom_id="doorTrainingButton")
+    @discord.ui.button(label="Door Training", emoji=doorTrainingEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="doorTrainingButton")
     async def doorTrainingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 6)
 
-    @discord.ui.button(label="Sound Training", emoji="📖", row=1, style=discord.ButtonStyle.primary, custom_id="soundTrainingButton")
+    @discord.ui.button(label="Sound Training", emoji=soundTrainingEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="soundTrainingButton")
     async def soundTrainingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 7)
 
-    @discord.ui.button(label="On Call", emoji="☎️", row=1, style=discord.ButtonStyle.primary, custom_id="onCallButton")
+    @discord.ui.button(label="On Call", emoji=onCallEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="onCallButton")
     async def onCallButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 8)
         
-    @discord.ui.button(label="Vendor", emoji="🤝", row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
+    @discord.ui.button(label="Vendor", emoji=vendorEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
     async def vendorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await ThreadView.userSignUp(button, 9)
         
@@ -297,13 +313,13 @@ async def upcoming(interaction: discord.Interaction) -> None:
             # Create string of emojis representing needed volunteers
             neededVolunteerString = ""
             if bookerCount == 0:
-                neededVolunteerString += "<:7th_Mammoth:858151066679640074> "
+                neededVolunteerString += f"{bookerEmoji} "
             if doorCount == 0:
-                neededVolunteerString += "<:7CDoor:857389356893339648> <:7CDoor:857389356893339648> "
+                neededVolunteerString += f"{doorEmoji} {doorEmoji} "
             if doorCount == 1:
-                neededVolunteerString += "<:7CDoor:857389356893339648> "
+                neededVolunteerString += f"{doorEmoji} "
             if soundCount == 0:
-                neededVolunteerString += "<:7CSound:857389356837765140> "
+                neededVolunteerString += f"{soundEmoji} "
 
             # Put field together
             embed.add_field(name=event['summary'],
@@ -400,25 +416,25 @@ async def threads(interaction: discord.Interaction) -> None:
             embed.add_field(name="", 
                             value=f":hourglass: <t:{startTimeUNIXSeconds}:R>",
                             inline=False)
-            embed.add_field(name="<:7th_Mammoth:858151066679640074> Booker",
+            embed.add_field(name=f"{bookerEmoji} Booker",
                             value="",
                             inline=True)
-            embed.add_field(name="<:7CDoor:857389356893339648> Door",
+            embed.add_field(name=f"{doorEmoji} Door",
                             value="",
                             inline=True)
-            embed.add_field(name="<:7CSound:857389356837765140> Sound",
+            embed.add_field(name=f"{soundEmoji} Sound",
                             value="",
                             inline=True)
-            embed.add_field(name="📖 Training: Door",
+            embed.add_field(name=f"{doorTrainingEmoji} Training: Door",
                             value="",
                             inline=True)
-            embed.add_field(name="📖 Training: Sound",
+            embed.add_field(name=f"{soundTrainingEmoji} Training: Sound",
                             value="",
                             inline=True)
-            embed.add_field(name="☎️ On-Call",
+            embed.add_field(name=f"{onCallEmoji} On-Call",
                             value="",
                             inline=True)
-            embed.add_field(name="Vendors",
+            embed.add_field(name=f"{vendorEmoji} Vendors",
                             value="",
                             inline=True)
             embed.add_field(name="",
