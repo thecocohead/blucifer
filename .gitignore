@@ -2,6 +2,8 @@
 config.ini
 gcal_creds.json
 token.json
+# but include example folder
+!/examples/*
 
 # Python Junk
 __pycache__/*
