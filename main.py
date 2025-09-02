@@ -294,6 +294,68 @@ async def createUpcomingShows(events: list[dict]) -> discord.Embed:
 
     return embed
 
+async def createShowEmbed(event: dict) -> discord.Embed:
+    """
+    Creates a show embed for the given event- used for /threads
+
+        The show embeds include a title and 11 fields.
+        Field 0- number of people signed up for the show. 
+        Field 1- absolute start date of show
+        Field 2- relative start date of show
+        Field 3- Booker signups
+        Field 4- Door signups
+        Field 5- Sound signups
+        Field 6- Door Training signups
+        Field 7- Sound Training signups
+        Field 8- On-Call signups
+        Field 9- Vendor signups
+        Field 10- etag
+    
+    Arguments: event(dict) - event dictionary to create embed for. Should be from Google Calendar. 
+
+    Returns: discord.Embed - Created show embed.
+    """
+    startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
+    startTimeUNIXSeconds = int(startTime.timestamp())
+
+    embed = discord.Embed(title=f"{event['summary']}", description="")
+    
+    # Fields
+    embed.add_field(name="", 
+                    value=":busts_in_silhouette: 0",
+                    inline=False)
+    embed.add_field(name="", 
+                    value=f":calendar: <t:{startTimeUNIXSeconds}:F>",
+                    inline=False)
+    embed.add_field(name="", 
+                    value=f":hourglass: <t:{startTimeUNIXSeconds}:R>",
+                    inline=False)
+    embed.add_field(name=f"{bookerEmoji} Booker",
+                    value="",
+                    inline=True)
+    embed.add_field(name=f"{doorEmoji} Door",
+                    value="",
+                    inline=True)
+    embed.add_field(name=f"{soundEmoji} Sound",
+                    value="",
+                    inline=True)
+    embed.add_field(name=f"{doorTrainingEmoji} Training: Door",
+                    value="",
+                    inline=True)
+    embed.add_field(name=f"{soundTrainingEmoji} Training: Sound",
+                    value="",
+                    inline=True)
+    embed.add_field(name=f"{onCallEmoji} On-Call",
+                    value="",
+                    inline=True)
+    embed.add_field(name=f"{vendorEmoji} Vendors",
+                    value="",
+                    inline=True)
+    embed.add_field(name="",
+                    value=f"Calendar ID: {event['etag']}",
+                    inline=False)
+    return embed
+            
 class ThreadView(discord.ui.View):
     """
     View to create show signup buttons for show embeds. Also handles users that press each button on a show thread to add them to a show embed & thread. 
@@ -455,17 +517,16 @@ async def threads(interaction: discord.Interaction) -> None:
     events = gcal.upcomingEvents(calendar_id)
     
     # Get previously posted embeds
+    channel = client.get_channel(int(threadsChannel))
     invalidETAGs = []
 
-    channel = client.get_channel(int(threadsChannel))
-    async for message in channel.history(limit=100):
-        if message.embeds:
-            for embed in message.embeds:
-                for field in embed.fields:
-                    if "Calendar ID:" in field.value:
-                        eventETAG = field.value[13:]
-                        invalidETAGs.append(eventETAG)
+    threads = await searchThreads()
+    for thread in threads:
+        eventETAG = thread['fields'][10].value[13:]
+        if not (eventETAG in invalidETAGs):
+            invalidETAGs.append(eventETAG)
 
+    
     # Count of threads created
     createdThreads = 0
     ignoredEvents = 0
@@ -474,49 +535,10 @@ async def threads(interaction: discord.Interaction) -> None:
         # Check if thread has already been posted
         if not event['etag'] in invalidETAGs: 
             # If thread has not been posted, create a new thread. 
-            startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
-            startTimeUNIXSeconds = int(startTime.timestamp())
 
-            embed = discord.Embed(title=f"{event['summary']}",
-                        description="")
-            
-            # Fields!
-            embed.add_field(name="", 
-                            value=":busts_in_silhouette: 0",
-                            inline=False)
-            embed.add_field(name="", 
-                            value=f":calendar: <t:{startTimeUNIXSeconds}:F>",
-                            inline=False)
-            embed.add_field(name="", 
-                            value=f":hourglass: <t:{startTimeUNIXSeconds}:R>",
-                            inline=False)
-            embed.add_field(name=f"{bookerEmoji} Booker",
-                            value="",
-                            inline=True)
-            embed.add_field(name=f"{doorEmoji} Door",
-                            value="",
-                            inline=True)
-            embed.add_field(name=f"{soundEmoji} Sound",
-                            value="",
-                            inline=True)
-            embed.add_field(name=f"{doorTrainingEmoji} Training: Door",
-                            value="",
-                            inline=True)
-            embed.add_field(name=f"{soundTrainingEmoji} Training: Sound",
-                            value="",
-                            inline=True)
-            embed.add_field(name=f"{onCallEmoji} On-Call",
-                            value="",
-                            inline=True)
-            embed.add_field(name=f"{vendorEmoji} Vendors",
-                            value="",
-                            inline=True)
-            embed.add_field(name="",
-                            value=f"Calendar ID: {event['etag']}",
-                            inline=False)
-            
+            embed = await createShowEmbed(event)
+
             currentThreadView = ThreadView()
-
             # Send embed
             newThread = await channel.send(embed=embed, view=currentThreadView)
             # Create Thread
