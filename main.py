@@ -15,6 +15,9 @@ botToken = config['DISCORD']['token']
 # Channel to post show threads
 threadsChannel = config['DISCORD']['threadsChannel']
 
+# Search limit for finding threads
+searchLimit = config['DISCORD']['searchLimit']
+
 # Administrator role name
 botAdminRole = config['DISCORD']['botAdminRole']
 
@@ -175,6 +178,121 @@ async def isUserBotAdmin(user: discord.User) -> bool:
         # user is not a bot admin
         return False
 
+async def searchThreads() -> list[dict]:
+    """
+    Searches threads channel for show embeds. 
+
+    Returns: list[dict] of the following for each found embed:
+        etag: Event's google calendar ETAG
+        summary: Event summary
+        url: Discord jump URL to embed
+        fields: Embed fields (used for needed volunteers)
+    """
+    channel = client.get_channel(int(threadsChannel))
+
+    threads = []
+    async for message in channel.history(limit=int(searchLimit)):
+        if message.embeds:
+            for searchEmbed in message.embeds:
+                for field in searchEmbed.fields:
+                    if "Calendar ID:" in field.value:
+                        eventETAG = field.value[13:]
+                        foundThread = {
+                            "etag": eventETAG,
+                            "summary": searchEmbed.title,
+                            "url": message.jump_url, 
+                            "fields": message.embeds[0].fields,
+                        }
+                        threads.append(foundThread)
+    return threads
+
+async def createNeededVolunteers(threads: dict) -> str:
+    """
+    With a given embed, get the currently signed up users and format it into a "Needed Volunteers" string. 
+
+    Arguments:
+        Threads- dictionary containing embed information, generally found by using searchThreads.  Should contain the following:
+            etag: Event's google calendar ETAG
+            summary: Event summary
+            url: Discord jump URL to embed
+            fields: Embed fields (used for needed volunteers)
+    
+    Returns: String containing needed volunteer emojis for each needed volunteer. 
+    """
+    # Get volunteer counts
+    bookerCount = 0
+    doorCount = 0
+    soundCount = 0
+    bookerCount += threads['fields'][3].value.count('@') # Add number of bookers
+    doorCount += threads['fields'][4].value.count('@') # Add number of door volunteers
+    soundCount += threads['fields'][5].value.count('@') # Add number of sound volunteers
+    doorCount += threads['fields'][6].value.count('@') # Add number of door trainees
+    soundCount += threads['fields'][7].value.count('@') # Add number of sound trainees
+
+    # Create string of emojis representing needed volunteers
+    neededVolunteerString = ""
+
+    while bookerCount < 1:
+        neededVolunteerString += f"{bookerEmoji} "
+        bookerCount += 1
+
+    while doorCount < 2:
+        neededVolunteerString += f"{doorEmoji} "
+        doorCount += 1
+
+    while soundCount < 1:
+        neededVolunteerString += f"{soundEmoji}"
+        soundCount += 1
+    
+    return neededVolunteerString
+    
+async def createUpcomingShows(events: list[dict]) -> discord.Embed:
+    """
+    Creates an upcoming shows embed. The embed is formatted as the following:
+
+    Title: Upcoming Events
+    Fields: Repeating for each event:
+        Field title: Event Summary
+        Field value: Start Date (absolute and relative), thread link (if one exists), and volunteers needed (if thread link exists)
+    Footer: Timestamp
+
+    Returns: discord.Embed - Created upcoming shows embed.
+
+    """
+    # Create embed
+    embed = discord.Embed(title="Upcoming Events")
+    
+    # Search for threads
+    threads = await searchThreads()
+
+    for event in events:
+
+        foundThreadDict = None
+        for d in threads:
+            if event['etag'] == d['etag']:
+                # thread found
+                foundThreadDict = d
+        
+        # Create listing of upcoming shows
+        startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
+        startTimeUNIXSeconds = int(startTime.timestamp())
+
+        if foundThreadDict:
+            # Thread is found for show, include thread jump link and needed volunteers
+            neededVolunteerString = await createNeededVolunteers(foundThreadDict)
+            # Put field together
+            embed.add_field(name=event['summary'],
+                            value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {foundThreadDict['url']}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None'}", 
+                            inline = False)
+        else:
+            # Thread is not found- exclude thread jump link and needed volunteers
+            embed.add_field(name=event['summary'],
+                            value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>", 
+                            inline = False)
+            
+        embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
+
+    return embed
 
 class ThreadView(discord.ui.View):
     """
@@ -285,70 +403,7 @@ async def upcoming(interaction: discord.Interaction) -> None:
     
     events = gcal.upcomingEvents(calendar_id)
 
-    # Create embed
-    embed = discord.Embed(title="Upcoming Events")
-    
-    # Search for threads
-    channel = client.get_channel(int(threadsChannel))
-
-    threads = []
-    async for message in channel.history(limit=100):
-        if message.embeds:
-            for searchEmbed in message.embeds:
-                for field in searchEmbed.fields:
-                    if "Calendar ID:" in field.value:
-                        eventETAG = field.value[13:]
-                        foundThread = {
-                            "etag": eventETAG,
-                            "summary": searchEmbed.title,
-                            "url": message.jump_url, 
-                            "fields": message.embeds[0].fields,
-                        }
-                        threads.append(foundThread)
-
-    for event in events:
-
-        foundThreadDict = None
-        for d in threads:
-            if event['etag'] == d['etag']:
-                # thread found
-                foundThreadDict = d
-        
-        # Create listing of upcoming shows
-        startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
-        startTimeUNIXSeconds = int(startTime.timestamp())
-        if foundThreadDict:
-            # Get volunteer counts
-            bookerCount = 0
-            doorCount = 0
-            soundCount = 0
-            bookerCount += foundThreadDict['fields'][3].value.count('@') # Add number of bookers
-            doorCount += foundThreadDict['fields'][4].value.count('@') # Add number of door volunteers
-            soundCount += foundThreadDict['fields'][5].value.count('@') # Add number of sound volunteers
-            doorCount += foundThreadDict['fields'][6].value.count('@') # Add number of door trainees
-            soundCount += foundThreadDict['fields'][7].value.count('@') # Add number of sound trainees
-
-            # Create string of emojis representing needed volunteers
-            neededVolunteerString = ""
-            if bookerCount == 0:
-                neededVolunteerString += f"{bookerEmoji} "
-            if doorCount == 0:
-                neededVolunteerString += f"{doorEmoji} {doorEmoji} "
-            if doorCount == 1:
-                neededVolunteerString += f"{doorEmoji} "
-            if soundCount == 0:
-                neededVolunteerString += f"{soundEmoji} "
-
-            # Put field together
-            embed.add_field(name=event['summary'],
-                            value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {foundThreadDict['url']}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None!'}", 
-                            inline = False)
-        else:
-            embed.add_field(name=event['summary'],
-                            value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>", 
-                            inline = False)
-            
-        embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
+    embed = await createUpcomingShows(events)
 
     # Send result
     await interaction.followup.send(embed=embed)
