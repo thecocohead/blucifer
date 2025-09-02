@@ -598,13 +598,18 @@ async def adduser(interaction: discord.Interaction, user: discord.Member, thread
         return
 
     # thread is found
-
+    try:
+        currentRole = await getUserCurrentRole(user, message)
+    except:
+        await interaction.followup.send(f"Message is not a show thread.")
+        return
+    
     # check if user is already in thread
-    if await getUserCurrentRole(user, message) == int(role):
+    if currentRole == int(role):
         # user is already in thread as selected role
         await interaction.followup.send(f"<@{user.id}> is already in the thread as selected role.")
         return
-    elif await getUserCurrentRole(user, message) != -1:
+    elif currentRole != -1:
         # user is in thread, but in a different role
         await removeUserFromEmbed(user, message)
     
