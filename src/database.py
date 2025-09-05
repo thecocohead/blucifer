@@ -29,5 +29,20 @@ def syncEvent(session: sqlalchemy.orm.Session, newEvent: models.Event) -> None:
 def getEvent(session: sqlalchemy.orm.Session, etag: str) -> models.Event | None:
     return session.query(models.Event).filter(models.Event.etag == etag).first()
 
+def getEventByThreadID(session: sqlalchemy.orm.Session, discordThreadId: str) -> models.Event | None:
+    return session.query(models.Event).filter(models.Event.discordThreadID == discordThreadId).first()
+
 def getUpcomingEvents(session: sqlalchemy.orm.Session) -> list[models.Event]:
     return session.query(models.Event).filter(models.Event.startTime > datetime.datetime.now()).order_by(models.Event.startTime).all()
+
+def setShowMode(session: sqlalchemy.orm.Session, discordThreadId: str, mode: str) -> None:
+    event = session.query(models.Event).filter(models.Event.discordThreadID == discordThreadId).first()
+    if event is not None:
+        event.mode = mode
+        syncEvent(session, event)
+
+def getShowMode(session: sqlalchemy.orm.Session, discordThreadId: str) -> str | None:
+    event = getEventByThreadID(session, discordThreadId)
+    if event is not None:
+        return event.mode
+    return None

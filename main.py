@@ -33,6 +33,7 @@ doorTrainingEmoji = config['DISCORD']['doorTrainingEmoji']
 soundTrainingEmoji = config['DISCORD']['soundTrainingEmoji']
 onCallEmoji = config['DISCORD']['onCallEmoji']
 vendorEmoji = config['DISCORD']['vendorEmoji']
+warningConeEmoji = config['DISCORD']['warningConeEmoji']
 
 # Google Calendar id 
 calendar_id = config['CALENDAR']['id']
@@ -60,15 +61,15 @@ A Show Thread is the discord thread that's created by the bot. The thread is whe
 """
 SHOW ROLES
 
-Show roles are given from the embed field number for the show. They are used for numberical identification throughout the bot.
+BOOKER : 0
+DOOR : 1
+SOUND : 2
+TRAINING DOOR : 3
+TRAINING SOUND : 4
+ON CALL : 5
+VENDOR : 6
 
-BOOKER : 3
-DOOR : 4
-SOUND : 5
-TRAINING DOOR : 6
-TRAINING SOUND : 7
-ON CALL : 8
-VENDOR : 9
+ATTENDING : 7 (used for meetings)
 """
 
 """
@@ -158,7 +159,7 @@ async def addUserToThread(message: discord.Message, user: discord.User) -> None:
         thread = message.thread
         await thread.add_user(user)
 
-async def addUserToEmbed(message: discord.Message, slot: int, user: discord.User) -> None:
+async def addUserToEmbed(message: discord.Message, role: int, user: discord.User) -> None:
     """
     Adds the user to the show embed. This function edits the embed to add the user onto it. 
 
@@ -171,6 +172,7 @@ async def addUserToEmbed(message: discord.Message, slot: int, user: discord.User
     """
     # get embed
     embed = message.embeds[0]
+    showMode = db.getShowMode(db.connect(db_file), str(message.id))
     # temporarily store embed into dictionary 
     embedDict = embed.to_dict()
     
@@ -182,8 +184,10 @@ async def addUserToEmbed(message: discord.Message, slot: int, user: discord.User
     currentCount = int(re.search(r'\d+', embed.fields[0].value).group())
     currentCount += 1
     # change fields
+
     embedDict['fields'][0]['value'] = f":busts_in_silhouette: {currentCount}"
-    embedDict['fields'][slot]['value'] = embedDict['fields'][slot]['value'] + f"\n<@{user.id}>"
+    embedDict['fields'][role]['value'] = embedDict['fields'][role]['value'] + f"\n<@{user.id}>"
+
     # send new embed for edit
     newEmbed = discord.Embed.from_dict(embedDict)
     await message.edit(embed=newEmbed)
@@ -356,38 +360,37 @@ async def createShowEmbed(event: Event) -> discord.Embed:
 
     embed = discord.Embed(title=f"{event.summary}", description="")
     
-    # Fields
-    embed.add_field(name="", 
-                    value=":busts_in_silhouette: 0",
-                    inline=False)
-    embed.add_field(name="", 
-                    value=f":calendar: <t:{startTimeUNIXSeconds}:F>",
-                    inline=False)
-    embed.add_field(name="", 
-                    value=f":hourglass: <t:{startTimeUNIXSeconds}:R>",
-                    inline=False)
-    embed.add_field(name=f"{bookerEmoji} Booker",
-                    value="",
-                    inline=True)
-    embed.add_field(name=f"{doorEmoji} Door",
-                    value="",
-                    inline=True)
-    embed.add_field(name=f"{soundEmoji} Sound",
-                    value="",
-                    inline=True)
-    embed.add_field(name=f"{doorTrainingEmoji} Training: Door",
-                    value="",
-                    inline=True)
-    embed.add_field(name=f"{soundTrainingEmoji} Training: Sound",
-                    value="",
-                    inline=True)
-    embed.add_field(name=f"{onCallEmoji} On-Call",
-                    value="",
-                    inline=True)
-    embed.add_field(name=f"{vendorEmoji} Vendors",
-                    value="",
-                    inline=True)
+    # Standard fields
+
+    embed.add_field(name="", value=":busts_in_silhouette: 0", inline=False)
+    embed.add_field(name="", value=f":calendar: <t:{startTimeUNIXSeconds}:F>", inline=False)
+    embed.add_field(name="", value=f":hourglass: <t:{startTimeUNIXSeconds}:R>", inline=False)
+
+    if event.mode == "STANDARD":
+        embed.add_field(name=f"{bookerEmoji} Booker", value="", inline=True)
+        embed.add_field(name=f"{doorEmoji} Door", value="", inline=True)
+        embed.add_field(name=f"{soundEmoji} Sound", value="", inline=True)
+        embed.add_field(name=f"{doorTrainingEmoji} Training: Door", value="", inline=True)
+        embed.add_field(name=f"{soundTrainingEmoji} Training: Sound", value="", inline=True)
+        embed.add_field(name=f"{onCallEmoji} On-Call", value="", inline=True)
+        embed.add_field(name=f"{vendorEmoji} Vendors", value="", inline=True)
+
+    if event.mode == "FESTIVAL":
+        embed.add_field(name=f"{bookerEmoji} Booker", value="", inline=True)
+        embed.add_field(name=f"{doorEmoji} Door", value="", inline=True)
+        embed.add_field(name=f"{soundEmoji} Sound", value="", inline=True)
+        embed.add_field(name=f"{onCallEmoji} On-Call", value="", inline=True)
+        embed.add_field(name=f"{vendorEmoji} Vendors", value="", inline=True)
+        embed.add_field(name="", value=f"{warningConeEmoji} This show is a festival, no training will be provided.", inline=False)
+
+    if event.mode == "MEETING":
+        embed.add_field(name=f"{vendorEmoji} Attending", value="", inline=True)
+
+    if event.mode == "NONE":
+        embed.add_field(name="", value=f"{warningConeEmoji} This event is for information only and does not have any signups.", inline=False)
+
     return embed
+
 
 async def updateEvent(event: Event) -> None:
     """
@@ -400,7 +403,13 @@ async def updateEvent(event: Event) -> None:
     session = db.connect(db_file)
     db.syncEvent(session, event)
 
-class ThreadView(discord.ui.View):
+async def userSignUp(button: discord.Button, role: int) -> None:
+    message = button.message
+    await addUserToThread(message, button.user)
+    await addUserToEmbed(message, role, button.user)
+    await button.response.send_message("Added you to the show thread!", ephemeral=True)
+
+class StandardView(discord.ui.View):
     """
     View to create show signup buttons for show embeds. Also handles users that press each button on a show thread to add them to a show embed & thread. 
     """
@@ -409,39 +418,103 @@ class ThreadView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    async def userSignUp(button: discord.Button, slot: int) -> None:
-        message = button.message
-        await addUserToThread(message, button.user)
-        await addUserToEmbed(message, slot, button.user)
-        await button.response.send_message("Added you to the show thread!", ephemeral=True)
-
     @discord.ui.button(label="Booker", emoji=bookerEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
     async def bookerButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await ThreadView.userSignUp(button, 3)
+        await userSignUp(button, 3)
 
     @discord.ui.button(label="Door", emoji=doorEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="doorButton")
     async def doorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await ThreadView.userSignUp(button, 4)
+        await userSignUp(button, 4)
 
     @discord.ui.button(label="Sound", emoji=soundEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="soundButton")
     async def soundButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await ThreadView.userSignUp(button, 5)
+        await userSignUp(button, 5)
 
     @discord.ui.button(label="Door Training", emoji=doorTrainingEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="doorTrainingButton")
     async def doorTrainingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await ThreadView.userSignUp(button, 6)
+        await userSignUp(button, 6)
 
     @discord.ui.button(label="Sound Training", emoji=soundTrainingEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="soundTrainingButton")
     async def soundTrainingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await ThreadView.userSignUp(button, 7)
+        await userSignUp(button, 7)
 
     @discord.ui.button(label="On Call", emoji=onCallEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="onCallButton")
     async def onCallButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await ThreadView.userSignUp(button, 8)
-        
+        await userSignUp(button, 8)
+
     @discord.ui.button(label="Vendor", emoji=vendorEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
     async def vendorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await ThreadView.userSignUp(button, 9)
+        await userSignUp(button, 9)
+
+    @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger, custom_id="RemoveButton")
+    async def removeButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
+        message = button.message
+        # check if user is in thread
+        if await getUserCurrentRole(button.user, button.message) == -1:
+            # user not in thread
+            await button.response.send_message("You aren't in the thread.", ephemeral=True)
+        else:
+            # remove user from embed
+            await removeUserFromEmbed(button.user, button.message)
+            # remove user from thread
+            # get base message
+            message = button.message
+            # get thread
+            thread = message.thread
+            await thread.remove_user(button.user)
+            await button.response.send_message("Removed you from the show thread.", ephemeral=True)
+
+class FestivalView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Booker", emoji=bookerEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
+    async def bookerButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
+        await userSignUp(button, 3)
+
+    @discord.ui.button(label="Door", emoji=doorEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="doorButton")
+    async def doorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
+        await userSignUp(button, 4)
+
+    @discord.ui.button(label="Sound", emoji=soundEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="soundButton")
+    async def soundButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
+        await userSignUp(button, 5)
+
+    @discord.ui.button(label="On Call", emoji=onCallEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="onCallButton")
+    async def onCallButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
+        await userSignUp(button, 6)
+
+    @discord.ui.button(label="Vendor", emoji=vendorEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
+    async def vendorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
+        await userSignUp(button, 7)
+
+    @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger, custom_id="RemoveButton")
+    async def removeButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
+        message = button.message
+        # check if user is in thread
+        if await getUserCurrentRole(button.user, button.message) == -1:
+            # user not in thread
+            await button.response.send_message("You aren't in the thread.", ephemeral=True)
+        else:
+            # remove user from embed
+            await removeUserFromEmbed(button.user, button.message)
+            # remove user from thread
+            # get base message
+            message = button.message
+            # get thread
+            thread = message.thread
+            await thread.remove_user(button.user)
+            await button.response.send_message("Removed you from the show thread.", ephemeral=True)
+
+class MeetingView(discord.ui.View):
+
+    # Needed function for buttons to persist past bot reboot
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Attending", emoji=vendorEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="attendingButton")
+    async def attendingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
+        await userSignUp(button, 3)
         
     @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger, custom_id="RemoveButton")
     async def removeButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
@@ -471,8 +544,12 @@ async def on_ready():
     """
     print(f'Logged in as {client.user}')
     await tree.sync(guild=None)
-    ThreadViewInstance = ThreadView()
-    client.add_view(ThreadViewInstance)
+    StandardViewInstance = StandardView()
+    FestivalViewInstance = FestivalView()
+    MeetingViewInstance = MeetingView()
+    client.add_view(StandardViewInstance)
+    client.add_view(FestivalViewInstance)
+    client.add_view(MeetingViewInstance)
 
 @tree.command(name="upcoming", description="Display upcoming events")
 async def upcoming(interaction: discord.Interaction) -> None:
@@ -577,7 +654,7 @@ async def threads(interaction: discord.Interaction) -> None:
 
         # Post embed to threads channel
         channel = client.get_channel(int(threadsChannel))
-        message = await channel.send(embed=embed, view=ThreadView())
+        message = await channel.send(embed=embed, view=StandardView())
 
         # Create thread for event
         thread = await message.create_thread(name=event.summary)
@@ -657,6 +734,49 @@ async def adduser(interaction: discord.Interaction, user: discord.Member, thread
     await addUserToEmbed(message, int(role), user)
     await interaction.followup.send(f"Added <@{user.id}> to the thread.")
     return
+
+# Set Show Mode Command
+@discord.app_commands.choices(mode=[
+    discord.app_commands.Choice(name="Standard", value="STANDARD"),
+    discord.app_commands.Choice(name="Festival", value="FESTIVAL"),
+    discord.app_commands.Choice(name="Meeting", value="MEETING"),
+    discord.app_commands.Choice(name="No Signups", value="NONE")
+])
+@tree.command(name="setmode", description="Set the show mode for an event")
+async def setmode(interaction: discord.Interaction, mode: str) -> None:
+    
+    threadId = str(interaction.channel.id)
+    # Check if user can run command
+    if not await isUserBotAdmin(interaction.user):
+        await interaction.response.send_message(f"You must have the {botAdminRole} role to use this command.", ephemeral=True)
+        return
+    
+    # Check if channel id is valid
+    if db.getShowMode(db.connect(db_file), threadId) is None:
+        await interaction.response.send_message(f"This is not a valid show thread. Please run this command from inside the show thread you want to change the mode on.", ephemeral=True)
+        return
+
+
+    event = db.getEventByThreadID(db.connect(db_file), threadId)
+    event.mode = mode
+    db.setShowMode(db.connect(db_file), threadId, mode)
+
+    baseMessage = await client.get_channel(int(threadsChannel)).fetch_message(int(threadId))
+
+    newEmbed = await createShowEmbed(event)
+    newView = None
+    if mode == "STANDARD":
+        newView = StandardView()
+    elif mode == "FESTIVAL":
+        newView = FestivalView()
+    elif mode == "MEETING":
+        newView = MeetingView()
+    elif mode == "NONE":
+        newView = None
+
+    await baseMessage.edit(embed=newEmbed, view=newView)
+
+    await interaction.response.send_message(f"Set show mode to {mode.lower()}.", ephemeral=True)
 
 # Start of "Main"
 # Connect to Discord
