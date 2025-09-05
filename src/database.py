@@ -23,13 +23,7 @@ def connect(fileName: str) -> sqlalchemy.orm.Session:
     return session()
 
 def syncEvent(session: sqlalchemy.orm.Session, newEvent: models.Event) -> None:
-    # Check if event already exists
-    if session.query(sqlalchemy.exists().where(newEvent.etag == models.Event.etag)).scalar():
-        # If it does, update it
-        session.query(models.Event).filter(models.Event.etag == newEvent.etag).update(newEvent)
-    else:
-        # Otherwise, create it
-        session.add(newEvent)
+    session.merge(newEvent)
     session.commit()
 
 def getEvent(session: sqlalchemy.orm.Session, etag: str) -> models.Event | None:

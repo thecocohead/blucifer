@@ -5,11 +5,12 @@ Base = declarative_base()
 
 class Event(Base):
     __tablename__ = "Events"
-    
+
     # Show Information
     summary = Column(String, index=True)
     startTime = Column(DateTime, index=True)
     etag = Column(String, primary_key=True, index=True)
+    discordThreadID = Column(String, index=True)
 
     # Show Mode
     mode = Column(String, index=True)

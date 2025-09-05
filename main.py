@@ -7,7 +7,7 @@ import re
 import src.database as db
 import src.models as models
 
-from models import Event
+from src.models import Event
 
 # Configuration Parsing
 config = configparser.ConfigParser()
@@ -16,7 +16,7 @@ config.read('config.ini', encoding='utf-8')
 # Discord bot token
 botToken = config['DISCORD']['token']
 
-# Channel to post show threads
+# Channel & Guild to post show threads
 threadsChannel = config['DISCORD']['threadsChannel']
 
 # Search limit for finding threads
@@ -89,11 +89,23 @@ NONE
 - No volunteer roles are shown.
 """
 
-async def getUpcomingEvents() -> list[dict]:
+async def threadExists(event: Event) -> bool:
+    try:
+        # Thread exists
+        await client.get_channel(int(threadsChannel)).fetch_message(int(event.discordThreadID))
+        return True
+    except discord.NotFound:
+        # Thread has been deleted, remove from db
+        newEvent = event
+        newEvent.discordThreadID = ""
+        await updateEvent(newEvent)
+        return False
+
+async def getUpcomingEvents() -> list[Event]:
     """
     Gets a list of upcoming events from the Google Calendar. 
 
-    Returns: list[dict] - List of event dictionaries as returned by Google Calendar API. 
+    Returns: list[Event] - List of Event objects as returned by database. 
     """
     events = gcal.upcomingEvents(calendar_id)
 
@@ -111,6 +123,7 @@ async def getUpcomingEvents() -> list[dict]:
                 startTime=datetime.datetime.fromisoformat(event['start']['dateTime']),
                 etag=event['etag'],
                 # Keep existing values for show mode and needed volunteers
+                discordThreadID=currentEvent.discordThreadID,
                 mode=currentEvent.mode,
                 neededBookers=currentEvent.neededBookers,
                 neededDoors=currentEvent.neededDoors,
@@ -122,6 +135,7 @@ async def getUpcomingEvents() -> list[dict]:
                 summary=event['summary'],
                 startTime=datetime.datetime.fromisoformat(event['start']['dateTime']),
                 etag=event['etag'],
+                discordThreadID="",
                 mode='STANDARD',
                 neededBookers=1,
                 neededDoors=2,
@@ -245,44 +259,12 @@ async def isUserBotAdmin(user: discord.User) -> bool:
         # user is not a bot admin
         return False
 
-async def searchThreads() -> list[dict]:
-    """
-    Searches threads channel for show embeds. 
-
-    Returns: list[dict] of the following for each found embed:
-        etag: Event's google calendar ETAG
-        summary: Event summary
-        url: Discord jump URL to embed
-        fields: Embed fields (used for needed volunteers)
-    """
-    channel = client.get_channel(int(threadsChannel))
-
-    threads = []
-    async for message in channel.history(limit=int(searchLimit)):
-        if message.embeds:
-            for searchEmbed in message.embeds:
-                for field in searchEmbed.fields:
-                    if "Calendar ID:" in field.value:
-                        eventETAG = field.value[13:]
-                        foundThread = {
-                            "etag": eventETAG,
-                            "summary": searchEmbed.title,
-                            "url": message.jump_url, 
-                            "fields": message.embeds[0].fields,
-                        }
-                        threads.append(foundThread)
-    return threads
-
-async def createNeededVolunteers(threads: dict) -> str:
+async def createNeededVolunteers(embed: dict) -> str:
     """
     With a given embed, get the currently signed up users and format it into a "Needed Volunteers" string. 
 
     Arguments:
-        Threads- dictionary containing embed information, generally found by using searchThreads.  Should contain the following:
-            etag: Event's google calendar ETAG
-            summary: Event summary
-            url: Discord jump URL to embed
-            fields: Embed fields (used for needed volunteers)
+        embed(dict) - Dictionary version of a discord embed. Should be from a show thread message.
     
     Returns: String containing needed volunteer emojis for each needed volunteer. 
     """
@@ -290,11 +272,11 @@ async def createNeededVolunteers(threads: dict) -> str:
     bookerCount = 0
     doorCount = 0
     soundCount = 0
-    bookerCount += threads['fields'][3].value.count('@') # Add number of bookers
-    doorCount += threads['fields'][4].value.count('@') # Add number of door volunteers
-    soundCount += threads['fields'][5].value.count('@') # Add number of sound volunteers
-    doorCount += threads['fields'][6].value.count('@') # Add number of door trainees
-    soundCount += threads['fields'][7].value.count('@') # Add number of sound trainees
+    bookerCount += embed['fields'][3]['value'].count('@') # Add number of bookers
+    doorCount += embed['fields'][4]['value'].count('@') # Add number of door volunteers
+    soundCount += embed['fields'][5]['value'].count('@') # Add number of sound volunteers
+    doorCount += embed['fields'][6]['value'].count('@') # Add number of door trainees
+    soundCount += embed['fields'][7]['value'].count('@') # Add number of sound trainees
 
     # Create string of emojis representing needed volunteers
     neededVolunteerString = ""
@@ -308,12 +290,12 @@ async def createNeededVolunteers(threads: dict) -> str:
         doorCount += 1
 
     while soundCount < 1:
-        neededVolunteerString += f"{soundEmoji}"
+        neededVolunteerString += f"{soundEmoji} "
         soundCount += 1
     
     return neededVolunteerString
     
-async def createUpcomingShows(events: list[dict]) -> discord.Embed:
+async def createUpcomingShows(events: list[Event]) -> discord.Embed:
     """
     Creates an upcoming shows embed. The embed is formatted as the following:
 
@@ -323,45 +305,34 @@ async def createUpcomingShows(events: list[dict]) -> discord.Embed:
         Field value: Start Date (absolute and relative), thread link (if one exists), and volunteers needed (if thread link exists)
     Footer: Timestamp
 
+    Arguments:
+        events(list[Event]) - List of event objects as given by database.
+
     Returns: discord.Embed - Created upcoming shows embed.
 
     """
     # Create embed
     embed = discord.Embed(title="Upcoming Events")
-    
-    # Search for threads
-    threads = await searchThreads()
-
     for event in events:
 
-        foundThreadDict = None
-        for d in threads:
-            if event['etag'] == d['etag']:
-                # thread found
-                foundThreadDict = d
-        
-        # Create listing of upcoming shows
-        startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
-        startTimeUNIXSeconds = int(startTime.timestamp())
+        startTimeUNIXSeconds = int(event.startTime.timestamp())
 
-        if foundThreadDict:
-            # Thread is found for show, include thread jump link and needed volunteers
-            neededVolunteerString = await createNeededVolunteers(foundThreadDict)
-            # Put field together
-            embed.add_field(name=event['summary'],
-                            value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {foundThreadDict['url']}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None'}", 
-                            inline = False)
+        if not(event.discordThreadID == "") and await threadExists(event):
+            # event has a thread, get the message
+            message = await client.get_channel(int(threadsChannel)).fetch_message(int(event.discordThreadID))
+            neededVolunteerString = await createNeededVolunteers(message.embeds[0].to_dict())
+            embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {message.jump_url}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None'}", inline = False)     
         else:
-            # Thread is not found- exclude thread jump link and needed volunteers
-            embed.add_field(name=event['summary'],
-                            value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>", 
-                            inline = False)
+            # event does not have a thread, so skip it
+            embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>", inline = False)
+
             
-        embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
+            
+    embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
 
     return embed
 
-async def createShowEmbed(event: dict) -> discord.Embed:
+async def createShowEmbed(event: Event) -> discord.Embed:
     """
     Creates a show embed for the given event- used for /threads
 
@@ -376,16 +347,14 @@ async def createShowEmbed(event: dict) -> discord.Embed:
         Field 7- Sound Training signups
         Field 8- On-Call signups
         Field 9- Vendor signups
-        Field 10- etag
     
-    Arguments: event(dict) - event dictionary to create embed for. Should be from Google Calendar. 
+    Arguments: event(Event) - event object to create embed for. Should be from database. 
 
     Returns: discord.Embed - Created show embed.
     """
-    startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
-    startTimeUNIXSeconds = int(startTime.timestamp())
+    startTimeUNIXSeconds = int(event.startTime.timestamp())
 
-    embed = discord.Embed(title=f"{event['summary']}", description="")
+    embed = discord.Embed(title=f"{event.summary}", description="")
     
     # Fields
     embed.add_field(name="", 
@@ -418,11 +387,19 @@ async def createShowEmbed(event: dict) -> discord.Embed:
     embed.add_field(name=f"{vendorEmoji} Vendors",
                     value="",
                     inline=True)
-    embed.add_field(name="",
-                    value=f"Calendar ID: {event['etag']}",
-                    inline=False)
     return embed
-            
+
+async def updateEvent(event: Event) -> None:
+    """
+    Updates an event in the database. If the event does not exist (based on etag), it is created.
+
+    Arguments: event(Event) - event object to update with edits. 
+
+    Returns: None
+    """
+    session = db.connect(db_file)
+    db.syncEvent(session, event)
+
 class ThreadView(discord.ui.View):
     """
     View to create show signup buttons for show embeds. Also handles users that press each button on a show thread to add them to a show embed & thread. 
@@ -584,36 +561,33 @@ async def threads(interaction: discord.Interaction) -> None:
     events = await getUpcomingEvents()
 
     # Get previously posted embeds
-    channel = client.get_channel(int(threadsChannel))
-    invalidETAGs = []
 
-    threads = await searchThreads()
-    for thread in threads:
-        eventETAG = thread['fields'][10].value[13:]
-        if not (eventETAG in invalidETAGs):
-            invalidETAGs.append(eventETAG)
-
-    
-    # Count of threads created
     createdThreads = 0
     ignoredEvents = 0
 
     for event in events:
-        # Check if thread has already been posted
-        if not event['etag'] in invalidETAGs: 
-            # If thread has not been posted, create a new thread. 
-
-            embed = await createShowEmbed(event)
-
-            currentThreadView = ThreadView()
-            # Send embed
-            newThread = await channel.send(embed=embed, view=currentThreadView)
-            # Create Thread
-            await newThread.create_thread(name=event['summary'])
-            createdThreads += 1
-        else:
+        if not event.discordThreadID == "" and await threadExists(event):
+            # Event already has a thread, so skip it
+            events.remove(event)
             ignoredEvents += 1
     
+    for event in events:
+        # Create embed for event
+        embed = await createShowEmbed(event)
+
+        # Post embed to threads channel
+        channel = client.get_channel(int(threadsChannel))
+        message = await channel.send(embed=embed, view=ThreadView())
+
+        # Create thread for event
+        thread = await message.create_thread(name=event.summary)
+
+        # Update event in database with discord thread ID
+        event.discordThreadID = str(message.id)
+        await updateEvent(event)
+        createdThreads += 1
+
+
     # Send closing message
     await interaction.followup.send(f"{createdThreads} thread(s) were created successfully. {ignoredEvents} calendar events were ignored.", ephemeral=True)
 
