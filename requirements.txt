@@ -5,3 +5,5 @@ google-auth-oauthlib
 # Discord
 discord
 discord_components
+# Database
+sqlalchemy

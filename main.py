@@ -4,6 +4,10 @@ import discord
 import gcal
 import datetime
 import re
+import src.database as db
+import src.models as models
+
+from models import Event
 
 # Configuration Parsing
 config = configparser.ConfigParser()
@@ -32,6 +36,9 @@ vendorEmoji = config['DISCORD']['vendorEmoji']
 
 # Google Calendar id 
 calendar_id = config['CALENDAR']['id']
+
+# Database file name
+db_file = config['DATABASE']['file']
 
 # Set up needed objects for Discord
 intents = discord.Intents.default()
@@ -63,6 +70,66 @@ TRAINING SOUND : 7
 ON CALL : 8
 VENDOR : 9
 """
+
+"""
+SHOW MODES
+
+Show modes are used to control the roles users can sign up for. 
+
+STANDARD
+- Regular show with standard volunteer roles
+
+FESTIVAL
+- Show with restricted training roles- door training and sound training are removed. 
+
+MEETING
+- All volunteer roles are removed and replaced with "Attending" role. 
+
+NONE
+- No volunteer roles are shown.
+"""
+
+async def getUpcomingEvents() -> list[dict]:
+    """
+    Gets a list of upcoming events from the Google Calendar. 
+
+    Returns: list[dict] - List of event dictionaries as returned by Google Calendar API. 
+    """
+    events = gcal.upcomingEvents(calendar_id)
+
+    # Connect to database
+    session = db.connect(db_file)
+
+    # Write events to db
+    for event in events:
+        # Check if event exists in db
+        currentEvent = db.getEvent(session, event['etag'])
+        if currentEvent:
+            # Event exists
+            newEvent = models.Event(
+                summary=event['summary'],
+                startTime=datetime.datetime.fromisoformat(event['start']['dateTime']),
+                etag=event['etag'],
+                # Keep existing values for show mode and needed volunteers
+                mode=currentEvent.mode,
+                neededBookers=currentEvent.neededBookers,
+                neededDoors=currentEvent.neededDoors,
+                neededSound=currentEvent.neededSound,
+            )
+        else:
+            # Event does not exist
+            newEvent = models.Event(
+                summary=event['summary'],
+                startTime=datetime.datetime.fromisoformat(event['start']['dateTime']),
+                etag=event['etag'],
+                mode='STANDARD',
+                neededBookers=1,
+                neededDoors=2,
+                neededSound=1,
+            )
+        # Write event to db
+        db.syncEvent(session, newEvent)
+    return db.getUpcomingEvents(session)
 
 async def addUserToThread(message: discord.Message, user: discord.User) -> None:
         """
@@ -462,8 +529,8 @@ async def upcoming(interaction: discord.Interaction) -> None:
     else:
         # user is not a bot admin
         await interaction.response.defer(ephemeral=True)
-    
-    events = gcal.upcomingEvents(calendar_id)
+
+    events = await getUpcomingEvents()
 
     embed = await createUpcomingShows(events)
 
@@ -514,8 +581,8 @@ async def threads(interaction: discord.Interaction) -> None:
     await interaction.response.defer(ephemeral=True)
 
     # Get Upcoming Events
-    events = gcal.upcomingEvents(calendar_id)
-    
+    events = await getUpcomingEvents()
+
     # Get previously posted embeds
     channel = client.get_channel(int(threadsChannel))
     invalidETAGs = []
@@ -560,7 +627,6 @@ async def threads(interaction: discord.Interaction) -> None:
     discord.app_commands.Choice(name="On Call", value="8"),
     discord.app_commands.Choice(name="Vendor", value="9"),
 ])
-
 
 @tree.command(name="adduser", description="Add a user to a show thread")
 async def adduser(interaction: discord.Interaction, user: discord.Member, thread: str, role: str) -> None:

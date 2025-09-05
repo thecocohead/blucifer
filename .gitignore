@@ -6,7 +6,11 @@ token.json
 !/examples/*
 
 # Python Junk
-__pycache__/*
+__pycache__/
+
 
 # VS Code
 .vscode/*
+
+# SQLite Database
+*.db
