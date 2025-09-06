@@ -320,7 +320,12 @@ async def createShowEmbed(event: dict) -> discord.Embed:
 
     Returns: discord.Embed - Created show embed.
     """
-    startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
+    if 'dateTime' not in event['start']:
+        # All day event
+        startTime = datetime.datetime.fromisoformat(event['start']['date'])
+    else:
+        # Normal event with start time
+        startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
     startTimeUNIXSeconds = int(startTime.timestamp())
 
     embed = discord.Embed(title=f"{event['summary']}", description="")
