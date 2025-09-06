@@ -274,7 +274,12 @@ async def createUpcomingShows(events: list[dict]) -> discord.Embed:
                 foundThreadDict = d
         
         # Create listing of upcoming shows
-        startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
+        if 'dateTime' not in event['start']:
+            # All day event
+            startTime = datetime.datetime.fromisoformat(event['start']['date'])
+        else:
+            # Normal event with start time
+            startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
         startTimeUNIXSeconds = int(startTime.timestamp())
 
         if foundThreadDict:
