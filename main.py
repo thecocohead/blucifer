@@ -692,6 +692,7 @@ async def threads(interaction: discord.Interaction) -> None:
     discord.app_commands.Choice(name="Sound Training", value="7"),
     discord.app_commands.Choice(name="On Call", value="8"),
     discord.app_commands.Choice(name="Vendor", value="9"),
+    discord.app_commands.Choice(name="Attending", value="10")
 ])
 
 @tree.command(name="adduser", description="Add a user to a show thread")
@@ -720,6 +721,7 @@ async def adduser(interaction: discord.Interaction, user: discord.Member, thread
 
     # Thread can only be in the specified threads channel. 
     channel = client.get_channel(int(threadsChannel))
+    message = None
 
     # Find thread
     try:
@@ -728,6 +730,29 @@ async def adduser(interaction: discord.Interaction, user: discord.Member, thread
         # thread is not found
         await interaction.followup.send(f"Thread not found.")
         return
+
+    event = db.getEventByThreadID(db.connect(db_file), thread)
+    
+    # Check if event mode allows for selected role
+    if event.mode != "MEETING" and role == "10":
+        await interaction.followup.send(f"This event is not a meeting, the attending role is not available.")
+        return
+    if event.mode == "FESTIVAL" and role in ["6", "7"]:
+        await interaction.followup.send(f"This show is a festival, door training and sound training roles are not available.")
+        return
+    if event.mode == "MEETING" and role != "10":
+        await interaction.followup.send(f"This event is a meeting, the only available role is attending.")
+        return
+    if event.mode == "NONE":
+        await interaction.followup.send(f"This event does not have any signups.")
+        return
+    
+    # adjust role per event mode
+    if event.mode == "FESTIVAL" and role in ["8", "9"]:
+        role = str(int(role) - 2)
+    if event.mode == "MEETING":
+        role = "3"
+
 
     # thread is found
     try:
