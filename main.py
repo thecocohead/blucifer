@@ -263,7 +263,7 @@ async def isUserBotAdmin(user: discord.User) -> bool:
         # user is not a bot admin
         return False
 
-async def createNeededVolunteers(embed: dict) -> str:
+async def createNeededVolunteers(embed: dict, eventMode: str) -> str:
     """
     With a given embed, get the currently signed up users and format it into a "Needed Volunteers" string. 
 
@@ -276,11 +276,19 @@ async def createNeededVolunteers(embed: dict) -> str:
     bookerCount = 0
     doorCount = 0
     soundCount = 0
-    bookerCount += embed['fields'][3]['value'].count('@') # Add number of bookers
-    doorCount += embed['fields'][4]['value'].count('@') # Add number of door volunteers
-    soundCount += embed['fields'][5]['value'].count('@') # Add number of sound volunteers
-    doorCount += embed['fields'][6]['value'].count('@') # Add number of door trainees
-    soundCount += embed['fields'][7]['value'].count('@') # Add number of sound trainees
+
+    if eventMode == "STANDARD":
+        bookerCount += embed['fields'][3]['value'].count('@') # Add number of bookers
+        doorCount += embed['fields'][4]['value'].count('@') # Add number of door volunteers
+        soundCount += embed['fields'][5]['value'].count('@') # Add number of sound volunteers
+        doorCount += embed['fields'][6]['value'].count('@') # Add number of door trainees
+        soundCount += embed['fields'][7]['value'].count('@') # Add number of sound trainees
+    elif eventMode == "FESTIVAL":
+        bookerCount += embed['fields'][3]['value'].count('@') # Add number of bookers
+        doorCount += embed['fields'][4]['value'].count('@') # Add number of door volunteers
+        soundCount += embed['fields'][5]['value'].count('@') # Add number of sound volunteers
+    else:
+        return ""
 
     # Create string of emojis representing needed volunteers
     neededVolunteerString = ""
@@ -324,8 +332,16 @@ async def createUpcomingShows(events: list[Event]) -> discord.Embed:
         if not(event.discordThreadID == "") and await threadExists(event):
             # event has a thread, get the message
             message = await client.get_channel(int(threadsChannel)).fetch_message(int(event.discordThreadID))
-            neededVolunteerString = await createNeededVolunteers(message.embeds[0].to_dict())
-            embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {message.jump_url}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None'}", inline = False)     
+            neededVolunteerString = await createNeededVolunteers(message.embeds[0].to_dict(), event.mode)
+            warningText = ""
+            if event.mode == "FESTIVAL":
+                warningText = f"{warningConeEmoji} This show is a festival, no training will be provided."
+            elif event.mode == "NONE":
+                warningText = f"{warningConeEmoji} This event is for information only and does not have any signups."
+            elif event.mode == "MEETING":
+                warningText = f"{warningConeEmoji} This event is a meeting."
+
+            embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {message.jump_url}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None'}\n{warningText}", inline = False)     
         else:
             # event does not have a thread, so skip it
             embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>", inline = False)
@@ -390,7 +406,6 @@ async def createShowEmbed(event: Event) -> discord.Embed:
         embed.add_field(name="", value=f"{warningConeEmoji} This event is for information only and does not have any signups.", inline=False)
 
     return embed
-
 
 async def updateEvent(event: Event) -> None:
     """
