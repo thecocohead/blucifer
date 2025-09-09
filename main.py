@@ -117,11 +117,19 @@ async def getUpcomingEvents() -> list[Event]:
     for event in events:
         # Check if event exists in db
         currentEvent = db.getEvent(session, event['etag'])
+        startTime = None
+        if 'dateTime' not in event['start']:
+        # All day event
+            startTime = datetime.datetime.fromisoformat(event['start']['date'])
+        else:
+        # Normal event with start time
+            startTime = datetime.datetime.fromisoformat(event['start']['dateTime'])
+        
         if currentEvent:
             # Event exists
             newEvent = models.Event(
                 summary=event['summary'],
-                startTime=datetime.datetime.fromisoformat(event['start']['dateTime']),
+                startTime=startTime,
                 etag=event['etag'],
                 # Keep existing values for show mode and needed volunteers
                 discordThreadID=currentEvent.discordThreadID,
@@ -134,7 +142,7 @@ async def getUpcomingEvents() -> list[Event]:
             # Event does not exist
             newEvent = models.Event(
                 summary=event['summary'],
-                startTime=datetime.datetime.fromisoformat(event['start']['dateTime']),
+                startTime=startTime,
                 etag=event['etag'],
                 discordThreadID="",
                 mode='STANDARD',
