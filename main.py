@@ -271,7 +271,7 @@ async def isUserBotAdmin(user: discord.User) -> bool:
         # user is not a bot admin
         return False
 
-async def createNeededVolunteers(embed: dict, eventMode: str) -> str:
+async def createNeededVolunteers(embed: dict, event: models.Event) -> str:
     """
     With a given embed, get the currently signed up users and format it into a "Needed Volunteers" string. 
 
@@ -285,13 +285,13 @@ async def createNeededVolunteers(embed: dict, eventMode: str) -> str:
     doorCount = 0
     soundCount = 0
 
-    if eventMode == "STANDARD":
+    if event.mode == "STANDARD":
         bookerCount += embed['fields'][3]['value'].count('@') # Add number of bookers
         doorCount += embed['fields'][4]['value'].count('@') # Add number of door volunteers
         soundCount += embed['fields'][5]['value'].count('@') # Add number of sound volunteers
         doorCount += embed['fields'][6]['value'].count('@') # Add number of door trainees
         soundCount += embed['fields'][7]['value'].count('@') # Add number of sound trainees
-    elif eventMode == "FESTIVAL":
+    elif event.mode == "FESTIVAL":
         bookerCount += embed['fields'][3]['value'].count('@') # Add number of bookers
         doorCount += embed['fields'][4]['value'].count('@') # Add number of door volunteers
         soundCount += embed['fields'][5]['value'].count('@') # Add number of sound volunteers
@@ -301,15 +301,15 @@ async def createNeededVolunteers(embed: dict, eventMode: str) -> str:
     # Create string of emojis representing needed volunteers
     neededVolunteerString = ""
 
-    while bookerCount < 1:
+    while bookerCount < event.neededBookers:
         neededVolunteerString += f"{bookerEmoji} "
         bookerCount += 1
 
-    while doorCount < 2:
+    while doorCount < event.neededDoors:
         neededVolunteerString += f"{doorEmoji} "
         doorCount += 1
 
-    while soundCount < 1:
+    while soundCount < event.neededSound:
         neededVolunteerString += f"{soundEmoji} "
         soundCount += 1
     
@@ -340,7 +340,7 @@ async def createUpcomingShows(events: list[Event]) -> discord.Embed:
         if not(event.discordThreadID == "") and await threadExists(event):
             # event has a thread, get the message
             message = await client.get_channel(int(threadsChannel)).fetch_message(int(event.discordThreadID))
-            neededVolunteerString = await createNeededVolunteers(message.embeds[0].to_dict(), event.mode)
+            neededVolunteerString = await createNeededVolunteers(message.embeds[0].to_dict(), event)
             warningText = ""
             if event.mode == "FESTIVAL":
                 warningText = f"{warningConeEmoji} This show is a festival, no training will be provided."
@@ -825,6 +825,40 @@ async def setmode(interaction: discord.Interaction, mode: str) -> None:
     await baseMessage.edit(embed=newEmbed, view=newView)
 
     await interaction.response.send_message(f"Set show mode to {mode.lower()}.", ephemeral=True)
+
+@tree.command(name="setvolunteers", description="Set the needed volunteers for an event")
+async def setvolunteers(interaction: discord.Interaction, bookers: int, doors: int, sound: int) -> None:
+    """
+    Handles /setvolunteers <bookers> <doors> <sound>
+
+    Command sets the number of needed volunteers for each role, to be used in the needed volunteer string. 
+
+    Arguments:
+        interaction - discord.py interaction information
+        bookers, doors, sound - discord command arguments to set event to. 
+
+    Returns: None
+
+    """
+    threadId = str(interaction.channel.id)
+    # Check if user can run command
+    if not await isUserBotAdmin(interaction.user):
+        await interaction.response.send_message(f"You must have the {botAdminRole} role to use this command.", ephemeral=True)
+        return
+    
+    # Check if channel id is valid
+    if db.getShowMode(db.connect(db_file), threadId) is None:
+        await interaction.response.send_message(f"This is not a valid show thread. Please run this command from inside the show thread you want to change the needed volunteers on.", ephemeral=True)
+        return
+
+    event = db.getEventByThreadID(db.connect(db_file), threadId)
+    event.neededBookers = bookers
+    event.neededDoors = doors
+    event.neededSound = sound
+    await updateEvent(event)
+
+    await interaction.response.send_message(f"Set needed volunteers to {bookers} booker(s), {doors} door volunteer(s), and {sound} sound volunteer(s).", ephemeral=True)
+
 
 # Start of "Main"
 # Connect to Discord
