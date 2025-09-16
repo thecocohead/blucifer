@@ -9,7 +9,7 @@ class Event(Base):
     # Show Information
     summary = Column(String, index=True)
     startTime = Column(DateTime, index=True)
-    etag = Column(String, primary_key=True, index=True)
+    id = Column(String, primary_key=True, index=True)
     discordThreadID = Column(String, index=True)
 
     # Show Mode

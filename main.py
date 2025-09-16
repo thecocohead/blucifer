@@ -116,7 +116,7 @@ async def getUpcomingEvents() -> list[Event]:
     # Write events to db
     for event in events:
         # Check if event exists in db
-        currentEvent = db.getEvent(session, event['etag'])
+        currentEvent = db.getEvent(session, event['id'])
         startTime = None
         if 'dateTime' not in event['start']:
         # All day event
@@ -130,7 +130,7 @@ async def getUpcomingEvents() -> list[Event]:
             newEvent = models.Event(
                 summary=event['summary'],
                 startTime=startTime,
-                etag=event['etag'],
+                id=event['id'],
                 # Keep existing values for show mode and needed volunteers
                 discordThreadID=currentEvent.discordThreadID,
                 mode=currentEvent.mode,
@@ -143,7 +143,7 @@ async def getUpcomingEvents() -> list[Event]:
             newEvent = models.Event(
                 summary=event['summary'],
                 startTime=startTime,
-                etag=event['etag'],
+                id=event['id'],
                 discordThreadID="",
                 mode='STANDARD',
                 neededBookers=1,

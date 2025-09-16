@@ -27,7 +27,7 @@ def syncEvent(session: sqlalchemy.orm.Session, newEvent: models.Event) -> None:
     session.commit()
 
 def getEvent(session: sqlalchemy.orm.Session, etag: str) -> models.Event | None:
-    return session.query(models.Event).filter(models.Event.etag == etag).first()
+    return session.query(models.Event).filter(models.Event.id == etag).first()
 
 def getEventByThreadID(session: sqlalchemy.orm.Session, discordThreadId: str) -> models.Event | None:
     return session.query(models.Event).filter(models.Event.discordThreadID == discordThreadId).first()
