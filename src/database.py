@@ -4,7 +4,7 @@ import os
 import src.models as models
 import datetime
 
-
+# Events
 def getEngine(fileName: str) -> sqlalchemy.engine.Engine:
     engine = sqlalchemy.create_engine(f"sqlite:///{fileName}")
     return engine
@@ -46,3 +46,22 @@ def getShowMode(session: sqlalchemy.orm.Session, discordThreadId: str) -> str | 
     if event is not None:
         return event.mode
     return None
+
+# Volunteer Sign-Ups
+
+def addVolunteerSignUp(session: sqlalchemy.orm.Session, eventid: str, userid: int, role: models.VolunteerRole) -> None:
+    newSignup = models.VolunteerSignUp(eventid=eventid, userid=userid, role=role)
+    session.add(newSignup)
+    session.commit()
+
+def removeVolunteerSignUp(session: sqlalchemy.orm.Session, eventid: str, userid: int) -> None:
+    foundSignup = session.query(models.VolunteerSignUp).filter(models.VolunteerSignUp.eventid == eventid, models.VolunteerSignUp.userid == userid).first()
+    if foundSignup is not None:
+        session.delete(foundSignup)
+        session.commit()
+
+def getVolunteerSignupsFromEvent(session: sqlalchemy.orm.Session, eventid: str) -> list[models.VolunteerSignUp]:
+    return session.query(models.VolunteerSignUp).filter(models.VolunteerSignUp.eventid == eventid).all()
+
+def getVolunteerSignupsForTimeperiod(session: sqlalchemy.orm.Session, startTime: datetime.datetime, endTime: datetime.datetime) -> list[models.VolunteerSignUp]:
+    return session.query(models.VolunteerSignUp).join(models.Event).filter(models.Event.startTime >= startTime, models.Event.startTime <= endTime).all()

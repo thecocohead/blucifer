@@ -6,8 +6,9 @@ import datetime
 import re
 import src.database as db
 import src.models as models
-
+import enum
 from src.models import Event
+from src.models import VolunteerRole
 
 # Configuration Parsing
 config = configparser.ConfigParser()
@@ -167,7 +168,7 @@ async def addUserToThread(message: discord.Message, user: discord.User) -> None:
         thread = message.thread
         await thread.add_user(user)
 
-async def addUserToEmbed(message: discord.Message, role: int, user: discord.User) -> None:
+async def addUserToEmbed(message: discord.Message, role: VolunteerRole, user: discord.User) -> None:
     """
     Adds the user to the show embed. This function edits the embed to add the user onto it. 
 
@@ -178,29 +179,49 @@ async def addUserToEmbed(message: discord.Message, role: int, user: discord.User
 
     Returns: None
     """
+    # check if user exists in embed, and if they do remove them from the old role
+    if not await getUserCurrentRole(user, message) == None:
+        await removeUserFromEmbed(user, message)
+        await removeSignupFromDatabase(user, message)
+
     # get embed
     embed = message.embeds[0]
     showMode = db.getShowMode(db.connect(db_file), str(message.id))
+
+    # get correct field to add user to
+    field = 0
+    
+    if showMode == "MEETING" and role == VolunteerRole.ATTENDING:
+        field = 3
+    elif showMode == "STANDARD":
+        field = role.value + 3
+    elif showMode == "FESTIVAL":
+        if role in [VolunteerRole.BOOKER, VolunteerRole.DOOR, VolunteerRole.SOUND]:
+            field = role.value + 3
+        elif role in [VolunteerRole.ON_CALL, VolunteerRole.VENDOR]:
+            field = role.value - 2
+
     # temporarily store embed into dictionary 
     embedDict = embed.to_dict()
     
-    # check if user exists in embed, and if they do remove them from the old role
-    if not await getUserCurrentRole(user, message) == -1:
-        await removeUserFromEmbed(user, message)
+
 
     #recalculate and change count of users 
-    currentCount = int(re.search(r'\d+', embed.fields[0].value).group())
+    session = db.connect(db_file)
+    event = db.getEventByThreadID(session, str(message.id))
+    currentCount = db.getVolunteerSignupsFromEvent(session, event.id).__len__()
     currentCount += 1
     # change fields
 
     embedDict['fields'][0]['value'] = f":busts_in_silhouette: {currentCount}"
-    embedDict['fields'][role]['value'] = embedDict['fields'][role]['value'] + f"\n<@{user.id}>"
+
+    embedDict['fields'][field]['value'] = embedDict['fields'][field]['value'] + f"\n<@{user.id}>"
 
     # send new embed for edit
     newEmbed = discord.Embed.from_dict(embedDict)
     await message.edit(embed=newEmbed)
     
-async def getUserCurrentRole(user: discord.User, message: discord.Message) -> int:
+async def getUserCurrentRole(user: discord.User, message: discord.Message) -> VolunteerRole | None:
     """
     Gets the user's current role in a show embed if they are currently signed up. 
 
@@ -210,17 +231,16 @@ async def getUserCurrentRole(user: discord.User, message: discord.Message) -> in
 
     Returns: int - show role id or -1 if user is not currently signed up.  
     """
-    embed = message.embeds[0]
-    fields = embed.fields
-    currentField = 0
-    for field in fields:
-        if str(user.id) in field.value:
-            # User is listed in current field
-            return currentField
-        else:
-            currentField += 1
-    # User not found
-    return -1
+    session = db.connect(db_file)
+    event = db.getEventByThreadID(session, str(message.id))
+    if event is None:
+        return None
+    # Check if user is signed up for the event
+    signups = db.getVolunteerSignupsFromEvent(session, event.id)
+    for signup in signups:
+        if signup.userid == user.id:
+            return signup.role
+    return None
 
 async def removeUserFromEmbed(user: discord.User, message: discord.Message) -> None:
     """
@@ -235,19 +255,27 @@ async def removeUserFromEmbed(user: discord.User, message: discord.Message) -> N
     embed = message.embeds[0]
     fields = embed.fields
     embedDict = embed.to_dict()
-    
-    targetField = await getUserCurrentRole(user, message)
 
-    if not targetField == -1:
+    if not await getUserCurrentRole(user, message) == None:
         # decrement signups
-        currentCount = int(re.search(r'\d+', embed.fields[0].value).group())
+        session = db.connect(db_file)
+        event = db.getEventByThreadID(session, str(message.id))
+        currentCount = db.getVolunteerSignupsFromEvent(session, event.id).__len__()
         currentCount -= 1
         # change fields
         embedDict['fields'][0]['value'] = f":busts_in_silhouette: {currentCount}"
         
         # evil regex fuckery to remove user from role
-        newValue = re.sub(f"<@{user.id}>(\\n)?", "", embedDict['fields'][targetField]['value'])
-        embedDict['fields'][targetField]['value'] = newValue
+        targetField = -1
+        for field in embedDict['fields']:
+            if re.search(f"<@{user.id}>", field['value']):
+                targetField = embedDict['fields'].index(field)
+                break
+        if not targetField == -1:
+            newValue = re.sub(f"<@{user.id}>(\\n)?", "", embedDict['fields'][targetField]['value'])
+            embedDict['fields'][targetField]['value'] = newValue
+        else:
+            return
 
         # send new embed for edit
         newEmbed = discord.Embed.from_dict(embedDict)
@@ -426,11 +454,41 @@ async def updateEvent(event: Event) -> None:
     session = db.connect(db_file)
     db.syncEvent(session, event)
 
-async def userSignUp(button: discord.Button, role: int) -> None:
+async def userSignUp(button: discord.Button, role: VolunteerRole) -> None:
     message = button.message
-    await addUserToThread(message, button.user)
-    await addUserToEmbed(message, role, button.user)
+    session = db.connect(db_file)
+    event = db.getEventByThreadID(session, str(message.id))
+    if event is not None:
+        await addUserToThread(message, button.user)
+        await addUserToEmbed(message, role, button.user)
+        db.addVolunteerSignUp(session, event.id, button.user.id, role)
     await button.response.send_message("Added you to the show thread!", ephemeral=True)
+
+async def removeSignupFromDatabase(user: discord.User, message: discord.Message) -> None:
+    session = db.connect(db_file)
+    event = db.getEventByThreadID(session, str(message.id))
+    if event is not None:
+        db.removeVolunteerSignUp(session, event.id, user.id)
+
+async def removeUserFromEvent(button: discord.Button) -> None:
+    message = button.message
+    # check if user is in thread
+    if await getUserCurrentRole(button.user, button.message) == None:
+        # user not in thread
+        await button.response.send_message("You aren't in the thread.", ephemeral=True)
+    else:
+        # remove user from embed
+        await removeUserFromEmbed(button.user, button.message)
+
+        # remove user from database
+        await removeSignupFromDatabase(button.user, button.message)
+
+        # get base message
+        message = button.message
+        # get thread
+        thread = message.thread
+        await thread.remove_user(button.user)
+        await button.response.send_message("Removed you from the show thread.", ephemeral=True)
 
 class StandardView(discord.ui.View):
     """
@@ -443,49 +501,36 @@ class StandardView(discord.ui.View):
 
     @discord.ui.button(label="Booker", emoji=bookerEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
     async def bookerButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 3)
+        await userSignUp(button, VolunteerRole.BOOKER)
 
     @discord.ui.button(label="Door", emoji=doorEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="doorButton")
     async def doorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 4)
+        await userSignUp(button, VolunteerRole.DOOR)
 
     @discord.ui.button(label="Sound", emoji=soundEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="soundButton")
     async def soundButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 5)
+        await userSignUp(button, VolunteerRole.SOUND)
 
     @discord.ui.button(label="Door Training", emoji=doorTrainingEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="doorTrainingButton")
     async def doorTrainingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 6)
+        await userSignUp(button, VolunteerRole.TRAINING_DOOR)
 
     @discord.ui.button(label="Sound Training", emoji=soundTrainingEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="soundTrainingButton")
     async def soundTrainingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 7)
+        await userSignUp(button, VolunteerRole.TRAINING_SOUND)
 
     @discord.ui.button(label="On Call", emoji=onCallEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="onCallButton")
     async def onCallButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 8)
+        await userSignUp(button, VolunteerRole.ON_CALL)
 
     @discord.ui.button(label="Vendor", emoji=vendorEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
     async def vendorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 9)
+        await userSignUp(button, VolunteerRole.VENDOR)
 
     @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger, custom_id="RemoveButton")
     async def removeButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        message = button.message
-        # check if user is in thread
-        if await getUserCurrentRole(button.user, button.message) == -1:
-            # user not in thread
-            await button.response.send_message("You aren't in the thread.", ephemeral=True)
-        else:
-            # remove user from embed
-            await removeUserFromEmbed(button.user, button.message)
-            # remove user from thread
-            # get base message
-            message = button.message
-            # get thread
-            thread = message.thread
-            await thread.remove_user(button.user)
-            await button.response.send_message("Removed you from the show thread.", ephemeral=True)
+        await removeUserFromEvent(button)
+
 
 class FestivalView(discord.ui.View):
     def __init__(self):
@@ -493,41 +538,27 @@ class FestivalView(discord.ui.View):
 
     @discord.ui.button(label="Booker", emoji=bookerEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="bookerButton")
     async def bookerButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 3)
+        await userSignUp(button, VolunteerRole.BOOKER)
 
     @discord.ui.button(label="Door", emoji=doorEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="doorButton")
     async def doorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 4)
+        await userSignUp(button, VolunteerRole.DOOR)
 
     @discord.ui.button(label="Sound", emoji=soundEmoji, row=0, style=discord.ButtonStyle.primary, custom_id="soundButton")
     async def soundButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 5)
+        await userSignUp(button, VolunteerRole.SOUND)
 
     @discord.ui.button(label="On Call", emoji=onCallEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="onCallButton")
     async def onCallButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 6)
+        await userSignUp(button, VolunteerRole.ON_CALL)
 
     @discord.ui.button(label="Vendor", emoji=vendorEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
     async def vendorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 7)
+        await userSignUp(button, VolunteerRole.VENDOR)
 
     @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger, custom_id="RemoveButton")
     async def removeButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        message = button.message
-        # check if user is in thread
-        if await getUserCurrentRole(button.user, button.message) == -1:
-            # user not in thread
-            await button.response.send_message("You aren't in the thread.", ephemeral=True)
-        else:
-            # remove user from embed
-            await removeUserFromEmbed(button.user, button.message)
-            # remove user from thread
-            # get base message
-            message = button.message
-            # get thread
-            thread = message.thread
-            await thread.remove_user(button.user)
-            await button.response.send_message("Removed you from the show thread.", ephemeral=True)
+        await removeUserFromEvent(button)
 
 class MeetingView(discord.ui.View):
 
@@ -537,25 +568,11 @@ class MeetingView(discord.ui.View):
 
     @discord.ui.button(label="Attending", emoji=vendorEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="attendingButton")
     async def attendingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        await userSignUp(button, 3)
+        await userSignUp(button, VolunteerRole.ATTENDING)
         
     @discord.ui.button(label="Remove", row=2, style=discord.ButtonStyle.danger, custom_id="RemoveButton")
     async def removeButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
-        message = button.message
-        # check if user is in thread
-        if await getUserCurrentRole(button.user, button.message) == -1:
-            # user not in thread
-            await button.response.send_message("You aren't in the thread.", ephemeral=True)
-        else:
-            # remove user from embed
-            await removeUserFromEmbed(button.user, button.message)
-            # remove user from thread
-            # get base message
-            message = button.message
-            # get thread
-            thread = message.thread
-            await thread.remove_user(button.user)
-            await button.response.send_message("Removed you from the show thread.", ephemeral=True)
+        await removeUserFromEvent(button)
 
 @client.event
 async def on_ready():
@@ -693,14 +710,14 @@ async def threads(interaction: discord.Interaction) -> None:
 
 # Role choices for adduser command. 
 @discord.app_commands.choices(role=[
-    discord.app_commands.Choice(name="Booker", value="3"),
-    discord.app_commands.Choice(name="Door", value="4"),
-    discord.app_commands.Choice(name="Sound", value="5"),
-    discord.app_commands.Choice(name="Door Training", value="6"),
-    discord.app_commands.Choice(name="Sound Training", value="7"),
-    discord.app_commands.Choice(name="On Call", value="8"),
-    discord.app_commands.Choice(name="Vendor", value="9"),
-    discord.app_commands.Choice(name="Attending", value="10")
+    discord.app_commands.Choice(name="Booker", value="0"),
+    discord.app_commands.Choice(name="Door", value="1"),
+    discord.app_commands.Choice(name="Sound", value="2"),
+    discord.app_commands.Choice(name="Door Training", value="3"),
+    discord.app_commands.Choice(name="Sound Training", value="4"),
+    discord.app_commands.Choice(name="On Call", value="5"),
+    discord.app_commands.Choice(name="Vendor", value="6"),
+    discord.app_commands.Choice(name="Attending", value="7")
 ])
 
 @tree.command(name="adduser", description="Add a user to a show thread")
@@ -727,60 +744,32 @@ async def adduser(interaction: discord.Interaction, user: discord.Member, thread
     # Tell discord we're thinking
     await interaction.response.defer(ephemeral=True)
 
-    # Thread can only be in the specified threads channel. 
-    channel = client.get_channel(int(threadsChannel))
-    message = None
-
-    # Find thread
-    try:
-        message = await channel.fetch_message(int(thread))
-    except:
-        # thread is not found
-        await interaction.followup.send(f"Thread not found.")
-        return
-
     event = db.getEventByThreadID(db.connect(db_file), thread)
     
     # Check if event mode allows for selected role
-    if event.mode != "MEETING" and role == "10":
+    if event.mode != "MEETING" and role == VolunteerRole.ATTENDING:
         await interaction.followup.send(f"This event is not a meeting, the attending role is not available.")
         return
-    if event.mode == "FESTIVAL" and role in ["6", "7"]:
+    if event.mode == "FESTIVAL" and role in [VolunteerRole.TRAINING_DOOR, VolunteerRole.TRAINING_SOUND]:
         await interaction.followup.send(f"This show is a festival, door training and sound training roles are not available.")
         return
-    if event.mode == "MEETING" and role != "10":
+    if event.mode == "MEETING" and role != VolunteerRole.ATTENDING:
         await interaction.followup.send(f"This event is a meeting, the only available role is attending.")
         return
     if event.mode == "NONE":
         await interaction.followup.send(f"This event does not have any signups.")
         return
     
-    # adjust role per event mode
-    if event.mode == "FESTIVAL" and role in ["8", "9"]:
-        role = str(int(role) - 2)
-    if event.mode == "MEETING":
-        role = "3"
-
-
-    # thread is found
+    # Add user to embed
     try:
-        currentRole = await getUserCurrentRole(user, message)
-    except:
-        await interaction.followup.send(f"Message is not a show thread.")
-        return
-    
-    # check if user is already in thread
-    if currentRole == int(role):
-        # user is already in thread as selected role
-        await interaction.followup.send(f"<@{user.id}> is already in the thread as selected role.")
-        return
-    elif currentRole != -1:
-        # user is in thread, but in a different role
-        await removeUserFromEmbed(user, message)
-    
-    await addUserToThread(message, user)
-    await addUserToEmbed(message, int(role), user)
-    await interaction.followup.send(f"Added <@{user.id}> to the thread.")
+        message = await client.get_channel(int(threadsChannel)).fetch_message(int(thread))
+        await addUserToThread(message, user)
+        await addUserToEmbed(message, VolunteerRole(int(role)), user)
+        db.addVolunteerSignUp(db.connect(db_file), event.id, user.id, VolunteerRole(int(role)))
+        await interaction.followup.send(f"Added {user.display_name} to the show thread as a {VolunteerRole(int(role)).name.lower()} volunteer.")
+    except discord.NotFound:
+        await interaction.followup.send(f"The specified thread ID is not valid.")
+
     return
 
 # Set Show Mode Command
