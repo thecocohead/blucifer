@@ -299,7 +299,7 @@ async def isUserBotAdmin(user: discord.User) -> bool:
         # user is not a bot admin
         return False
 
-async def createNeededVolunteers(embed: dict, event: models.Event) -> str:
+async def createNeededVolunteers(event: models.Event) -> str:
     """
     With a given embed, get the currently signed up users and format it into a "Needed Volunteers" string. 
 
@@ -309,22 +309,16 @@ async def createNeededVolunteers(embed: dict, event: models.Event) -> str:
     Returns: String containing needed volunteer emojis for each needed volunteer. 
     """
     # Get volunteer counts
-    bookerCount = 0
-    doorCount = 0
-    soundCount = 0
 
-    if event.mode == "STANDARD":
-        bookerCount += embed['fields'][3]['value'].count('@') # Add number of bookers
-        doorCount += embed['fields'][4]['value'].count('@') # Add number of door volunteers
-        soundCount += embed['fields'][5]['value'].count('@') # Add number of sound volunteers
-        doorCount += embed['fields'][6]['value'].count('@') # Add number of door trainees
-        soundCount += embed['fields'][7]['value'].count('@') # Add number of sound trainees
-    elif event.mode == "FESTIVAL":
-        bookerCount += embed['fields'][3]['value'].count('@') # Add number of bookers
-        doorCount += embed['fields'][4]['value'].count('@') # Add number of door volunteers
-        soundCount += embed['fields'][5]['value'].count('@') # Add number of sound volunteers
-    else:
+    # Bail on non-needed show modes
+    if event.mode in ["NONE", "MEETING"]:
         return ""
+
+    volunteers = db.getVolunteerSignupsFromEvent(db.connect(db_file), event.id)
+
+    bookerCount = sum(1 for v in volunteers if v.role == models.VolunteerRole.BOOKER)
+    doorCount = sum(1 for v in volunteers if v.role == models.VolunteerRole.DOOR or v.role == models.VolunteerRole.TRAINING_DOOR)
+    soundCount = sum(1 for v in volunteers if v.role == models.VolunteerRole.SOUND or v.role == models.VolunteerRole.TRAINING_SOUND)
 
     # Create string of emojis representing needed volunteers
     neededVolunteerString = ""
@@ -362,13 +356,12 @@ async def createUpcomingShows(events: list[Event]) -> discord.Embed:
     # Create embed
     embed = discord.Embed(title="Upcoming Events")
     for event in events:
-
         startTimeUNIXSeconds = int(event.startTime.timestamp())
 
         if not(event.discordThreadID == "") and await threadExists(event):
             # event has a thread, get the message
             message = await client.get_channel(int(threadsChannel)).fetch_message(int(event.discordThreadID))
-            neededVolunteerString = await createNeededVolunteers(message.embeds[0].to_dict(), event)
+            neededVolunteerString = await createNeededVolunteers(event)
             warningText = ""
             if event.mode == "FESTIVAL":
                 warningText = f"{warningConeEmoji} This show is a festival, no training will be provided."
@@ -377,11 +370,13 @@ async def createUpcomingShows(events: list[Event]) -> discord.Embed:
             elif event.mode == "MEETING":
                 warningText = f"{warningConeEmoji} This event is a meeting."
 
-            embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {message.jump_url}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None'}\n{warningText}", inline = False)     
+            if event.mode in ["NONE", "MEETING"]:
+                embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {message.jump_url}\n{warningText}", inline = False)   
+            else:
+                embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {message.jump_url}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None'}\n{warningText}", inline = False)   
         else:
             # event does not have a thread, so skip it
             embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>", inline = False)
-
             
             
     embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
