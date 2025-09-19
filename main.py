@@ -36,6 +36,7 @@ soundTrainingEmoji = config['DISCORD']['soundTrainingEmoji']
 onCallEmoji = config['DISCORD']['onCallEmoji']
 vendorEmoji = config['DISCORD']['vendorEmoji']
 warningConeEmoji = config['DISCORD']['warningConeEmoji']
+attendingEmoji = config['DISCORD']['attendingEmoji']
 
 # Google Calendar id 
 calendar_id = config['CALENDAR']['id']
@@ -432,7 +433,7 @@ async def createShowEmbed(event: Event) -> discord.Embed:
         embed.add_field(name="", value=f"{warningConeEmoji} This show is a festival, no training will be provided.", inline=False)
 
     if event.mode == "MEETING":
-        embed.add_field(name=f"{vendorEmoji} Attending", value="", inline=True)
+        embed.add_field(name=f"{attendingEmoji} Attending", value="", inline=True)
 
     if event.mode == "NONE":
         embed.add_field(name="", value=f"{warningConeEmoji} This event is for information only and does not have any signups.", inline=False)
@@ -547,7 +548,7 @@ class StandardView(discord.ui.View):
     async def onCallButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await userSignUp(button, VolunteerRole.ON_CALL)
 
-    @discord.ui.button(label="Vendor", emoji=vendorEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
+    @discord.ui.button(label="Vendor", emoji=attendingEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
     async def vendorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await userSignUp(button, VolunteerRole.VENDOR)
 
@@ -590,7 +591,7 @@ class MeetingView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Attending", emoji=vendorEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="attendingButton")
+    @discord.ui.button(label="Attending", emoji=attendingEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="attendingButton")
     async def attendingButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await userSignUp(button, VolunteerRole.ATTENDING)
         
