@@ -170,7 +170,7 @@ async def addUserToThread(message: discord.Message, user: discord.User) -> None:
         thread = message.thread
         await thread.add_user(user)
 
-async def addUserToEmbed(message: discord.Message, role: VolunteerRole, user: discord.User) -> None:
+async def addUserToEmbed(message: discord.Message, role: VolunteerRole, user: discord.User, bypassOldCheck: bool) -> None:
     """
     Adds the user to the show embed. This function edits the embed to add the user onto it. 
 
@@ -181,8 +181,8 @@ async def addUserToEmbed(message: discord.Message, role: VolunteerRole, user: di
 
     Returns: None
     """
-    # check if user exists in embed, and if they do remove them from the old role
-    if not await getUserCurrentRole(user, message) == None:
+    # check if user exists in embed, and if they do remove them from the old role    
+    if (not bypassOldCheck) and (await getUserCurrentRole(user, message) != None):
         await removeUserFromEmbed(user, message)
         await removeSignupFromDatabase(user, message)
 
@@ -201,7 +201,7 @@ async def addUserToEmbed(message: discord.Message, role: VolunteerRole, user: di
         if role in [VolunteerRole.BOOKER, VolunteerRole.DOOR, VolunteerRole.SOUND]:
             field = role.value + 3
         elif role in [VolunteerRole.ON_CALL, VolunteerRole.VENDOR]:
-            field = role.value - 2
+            field = role.value + 1
 
     # temporarily store embed into dictionary 
     embedDict = embed.to_dict()
@@ -212,7 +212,8 @@ async def addUserToEmbed(message: discord.Message, role: VolunteerRole, user: di
     session = db.connect(db_file)
     event = db.getEventByThreadID(session, str(message.id))
     currentCount = db.getVolunteerSignupsFromEvent(session, event.id).__len__()
-    currentCount += 1
+    if not bypassOldCheck:
+        currentCount += 1
     # change fields
 
     embedDict['fields'][0]['value'] = f":busts_in_silhouette: {currentCount}"
@@ -457,7 +458,7 @@ async def userSignUp(button: discord.Button, role: VolunteerRole) -> None:
     event = db.getEventByThreadID(session, str(message.id))
     if event is not None:
         await addUserToThread(message, button.user)
-        await addUserToEmbed(message, role, button.user)
+        await addUserToEmbed(message, role, button.user, False)
         db.addVolunteerSignUp(session, event.id, button.user.id, role)
     await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
@@ -548,7 +549,7 @@ class StandardView(discord.ui.View):
     async def onCallButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await userSignUp(button, VolunteerRole.ON_CALL)
 
-    @discord.ui.button(label="Vendor", emoji=attendingEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
+    @discord.ui.button(label="Vendor", emoji=vendorEmoji, row=1, style=discord.ButtonStyle.primary, custom_id="vendorButton")
     async def vendorButtonCallback(self, button: discord.Button, interaction: discord.Interaction) -> None:
         await userSignUp(button, VolunteerRole.VENDOR)
 
@@ -772,13 +773,13 @@ async def adduser(interaction: discord.Interaction, user: discord.Member, thread
     event = db.getEventByThreadID(db.connect(db_file), thread)
     
     # Check if event mode allows for selected role
-    if event.mode != "MEETING" and role == VolunteerRole.ATTENDING:
+    if event.mode != "MEETING" and int(role) == VolunteerRole.ATTENDING.value:
         await interaction.followup.send(f"This event is not a meeting, the attending role is not available.")
         return
-    if event.mode == "FESTIVAL" and role in [VolunteerRole.TRAINING_DOOR, VolunteerRole.TRAINING_SOUND]:
+    if event.mode == "FESTIVAL" and int(role) in [VolunteerRole.TRAINING_DOOR.value, VolunteerRole.TRAINING_SOUND.value]:
         await interaction.followup.send(f"This show is a festival, door training and sound training roles are not available.")
         return
-    if event.mode == "MEETING" and role != VolunteerRole.ATTENDING:
+    if event.mode == "MEETING" and int(role) != VolunteerRole.ATTENDING.value:
         await interaction.followup.send(f"This event is a meeting, the only available role is attending.")
         return
     if event.mode == "NONE":
@@ -789,7 +790,7 @@ async def adduser(interaction: discord.Interaction, user: discord.Member, thread
     try:
         message = await client.get_channel(int(threadsChannel)).fetch_message(int(thread))
         await addUserToThread(message, user)
-        await addUserToEmbed(message, VolunteerRole(int(role)), user)
+        await addUserToEmbed(message, VolunteerRole(int(role)), user, False)
         db.addVolunteerSignUp(db.connect(db_file), event.id, user.id, VolunteerRole(int(role)))
         await interaction.followup.send(f"Added {user.display_name} to the show thread as a {VolunteerRole(int(role)).name.lower()} volunteer.")
     except discord.NotFound:
@@ -836,7 +837,31 @@ async def setmode(interaction: discord.Interaction, mode: str) -> None:
     elif mode == "NONE":
         newView = None
 
-    await baseMessage.edit(embed=newEmbed, view=newView)
+    baseMessage = await baseMessage.edit(embed=newEmbed, view=newView)
+
+    # Drop any signups that don't fit the new mode
+    signups = db.getVolunteerSignupsFromEvent(db.connect(db_file), event.id)
+    for signup in signups:
+        if mode == "NONE":
+            # drop all signups
+            db.removeVolunteerSignUp(db.connect(db_file), event.id, signup.userid)
+            continue
+        if mode == "MEETING" and not signup.role == VolunteerRole.ATTENDING:
+            # drop non-attending signups
+            db.removeVolunteerSignUp(db.connect(db_file), event.id, signup.userid)
+            continue
+        if mode == "FESTIVAL" and signup.role not in [VolunteerRole.BOOKER, VolunteerRole.DOOR, VolunteerRole.SOUND, VolunteerRole.ON_CALL, VolunteerRole.VENDOR]:
+            # drop training signups
+            db.removeVolunteerSignUp(db.connect(db_file), event.id, signup.userid)
+            continue
+        if mode == "STANDARD" and signup.role == VolunteerRole.ATTENDING:
+            # drop attending signups
+            db.removeVolunteerSignUp(db.connect(db_file), event.id, signup.userid)
+            continue
+    
+    # Add existing signups to embed
+    for signup in db.getVolunteerSignupsFromEvent(db.connect(db_file), event.id):
+        await addUserToEmbed(baseMessage, signup.role, await client.fetch_user(signup.userid), True)
 
     await interaction.response.send_message(f"Set show mode to {mode.lower()}.", ephemeral=True)
 
