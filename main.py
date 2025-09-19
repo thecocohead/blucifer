@@ -486,6 +486,34 @@ async def removeUserFromEvent(button: discord.Button) -> None:
         await thread.remove_user(button.user)
         await button.response.send_message("Removed you from the show thread.", ephemeral=True)
 
+async def generateVolunteerReport(startDate: datetime.datetime, endDate: datetime.datetime) -> str:
+    """
+    Generates a volunteer report for all users that have signed up for shows between the given start and end dates. 
+
+    Arguments:
+        startDate(datetime.datetime) - Start date of report range
+        endDate(datetime.datetime) - End date of report range
+    
+    Returns: str - Formatted volunteer report.
+    """
+    session = db.connect(db_file)
+    signups = db.getVolunteerSignupsForTimeperiod(session, startDate, endDate)
+
+    users = {}
+    for signup in signups:
+        if signup.userid in users:
+            users[signup.userid] += 1
+        else:
+            users[signup.userid] = 1
+    
+    usersSorted = sorted(users.items(), key=lambda count: count[1] , reverse=True)
+
+    report = ""
+    for user in usersSorted:
+        report += f"<@{user[0]}>: {user[1]} signups\n"
+
+    return report
+
 class StandardView(discord.ui.View):
     """
     View to create show signup buttons for show embeds. Also handles users that press each button on a show thread to add them to a show embed & thread. 
@@ -844,6 +872,45 @@ async def setvolunteers(interaction: discord.Interaction, bookers: int, doors: i
 
     await interaction.response.send_message(f"Set needed volunteers to {bookers} booker(s), {doors} door volunteer(s), and {sound} sound volunteer(s).", ephemeral=True)
 
+@tree.command(name="report", description="Create a report of volunteer signups")
+async def report(interaction: discord.Interaction, start_date: str, end_date: str) -> None:
+    """
+    Handles /report <startDate> <endDate>
+
+    Command generates a report of volunteer signups between the specified dates.
+
+    Arguments:
+        interaction - discord.py interaction information
+        startDate, endDate - date range for the report
+
+    Returns: None
+
+    """
+    # Check if user can run command
+    if not await isUserBotAdmin(interaction.user):
+        await interaction.response.send_message(f"You must have the {botAdminRole} role to use this command.", ephemeral=True)
+        return
+
+    # Generate report
+
+    startDate = datetime.datetime.strptime(start_date, "%m/%d/%Y")
+    endDate = datetime.datetime.strptime(end_date, "%m/%d/%Y")
+
+    if startDate > endDate:
+        await interaction.response.send_message("Start date must be before end date.", ephemeral=True)
+        return
+    if startDate == None or endDate == None:
+        await interaction.response.send_message("Invalid date format. Please use MM/DD/YYYY.", ephemeral=True)
+        return
+
+    report = await generateVolunteerReport(startDate, endDate)
+
+    embed = discord.Embed()
+    embed.title = f"Volunteer Report: {startDate.strftime('%m/%d/%Y')} to {endDate.strftime('%m/%d/%Y')}"
+    embed.description = report if report != "" else "No signups in this time period."
+    embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # Start of "Main"
 # Connect to Discord
