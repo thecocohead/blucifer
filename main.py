@@ -18,6 +18,7 @@ config.read('config.ini', encoding='utf-8')
 botToken = config['DISCORD']['token']
 
 # Channel & Guild to post show threads
+guildID = config['DISCORD']['threadsGuild']
 threadsChannel = config['DISCORD']['threadsChannel']
 
 # Search limit for finding threads
@@ -360,7 +361,7 @@ async def createUpcomingShows(events: list[Event]) -> discord.Embed:
 
         if not(event.discordThreadID == "") and await threadExists(event):
             # event has a thread, get the message
-            message = await client.get_channel(int(threadsChannel)).fetch_message(int(event.discordThreadID))
+            jumpURL = "https://discord.com/channels/" + str(guildID) + "/" + str(threadsChannel) + "/" + str(event.discordThreadID)
             neededVolunteerString = await createNeededVolunteers(event)
             warningText = ""
             if event.mode == "FESTIVAL":
@@ -371,9 +372,9 @@ async def createUpcomingShows(events: list[Event]) -> discord.Embed:
                 warningText = f"{warningConeEmoji} This event is a meeting."
 
             if event.mode in ["NONE", "MEETING"]:
-                embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {message.jump_url}\n{warningText}", inline = False)   
+                embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {jumpURL}\n{warningText}", inline = False)   
             else:
-                embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {message.jump_url}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None'}\n{warningText}", inline = False)   
+                embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>\n**Thread**: {jumpURL}\n**Needed Volunteers**: {neededVolunteerString if neededVolunteerString else 'None'}\n{warningText}", inline = False)   
         else:
             # event does not have a thread, so skip it
             embed.add_field(name=event.summary, value=f"**Date**: <t:{startTimeUNIXSeconds}:F> // <t:{startTimeUNIXSeconds}:R>", inline = False)
