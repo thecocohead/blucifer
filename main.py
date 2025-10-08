@@ -460,25 +460,37 @@ async def upcoming(interaction: discord.Interaction) -> None:
 
     Returns - None
     """
+    
 
     # Prompt discord for the "Bot is thinking...." message
 
     # If user has the botAdminRole, the message should be sent to all (not ephermerally)
     # otherwise, it's still ok to run, but it should be sent to the user only. (ephermerally)
 
+    ephermeral = None
     if await isUserBotAdmin(interaction.user):
         # user is a bot admin
         await interaction.response.defer(ephemeral=False)
+        ephermeral = False
     else:
         # user is not a bot admin
         await interaction.response.defer(ephemeral=True)
+        ephermeral = True
     
     events = gcal.upcomingEvents(calendar_id)
 
-    embed = await createUpcomingShows(events)
+    embeds = []
+    # Seperate events into groups of 15 for embeds
+    i = 0
+    while i < len(events):
+        eventSubset = events[i:i + 15]
+        embed = await createUpcomingShows(eventSubset)
+        embeds.append(embed)
+        i += 15
 
     # Send result
-    await interaction.followup.send(embed=embed)
+    for embed in embeds:
+        await interaction.followup.send(embed=embed, ephemeral=ephermeral)
 
 # Threads Command
 @tree.command(name="threads", description="Create new show threads")
