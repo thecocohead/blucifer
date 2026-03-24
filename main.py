@@ -20,6 +20,7 @@ botToken = config['DISCORD']['token']
 # Channel & Guild to post show threads
 guildID = config['DISCORD']['threadsGuild']
 threadsChannel = config['DISCORD']['threadsChannel']
+upcomingChannel = config['DISCORD']['upcomingChannel']
 
 # Search limit for finding threads
 searchLimit = config['DISCORD']['searchLimit']
@@ -460,6 +461,7 @@ async def userSignUp(button: discord.Button, role: VolunteerRole) -> None:
         await addUserToThread(message, button.user)
         await addUserToEmbed(message, role, button.user, False)
         db.addVolunteerSignUp(session, event.id, button.user.id, role)
+    await generateUpcoming()
     await button.response.send_message("Added you to the show thread!", ephemeral=True)
 
 async def removeSignupFromDatabase(user: discord.User, message: discord.Message) -> None:
@@ -486,6 +488,7 @@ async def removeUserFromEvent(button: discord.Button) -> None:
         # get thread
         thread = message.thread
         await thread.remove_user(button.user)
+        await generateUpcoming()
         await button.response.send_message("Removed you from the show thread.", ephemeral=True)
 
 async def generateVolunteerReport(startDate: datetime.datetime, endDate: datetime.datetime) -> str:
@@ -515,6 +518,20 @@ async def generateVolunteerReport(startDate: datetime.datetime, endDate: datetim
         report += f"<@{user[0]}>: {user[1]} signups\n"
 
     return report
+
+async def generateUpcoming() -> None:
+    """
+    Automatically generates the upcoming shows embed and posts it to the channel defined in config.ini. Also purges old embeds in the channel. 
+
+    Arguments: None
+
+    Returns: None
+    """
+    channel = client.get_channel(int(upcomingChannel))
+    await channel.purge()
+    events = await getUpcomingEvents()
+    embed = await createUpcomingShows(events)
+    await channel.send(embed=embed)
 
 class StandardView(discord.ui.View):
     """
@@ -730,7 +747,8 @@ async def threads(interaction: discord.Interaction) -> None:
         await updateEvent(event)
         createdThreads += 1
 
-
+    # Post upcoming
+    await generateUpcoming()
     # Send closing message
     await interaction.followup.send(f"{createdThreads} thread(s) were created successfully. {ignoredEvents} calendar events were ignored.", ephemeral=True)
 
@@ -793,6 +811,7 @@ async def adduser(interaction: discord.Interaction, user: discord.Member, thread
         await addUserToEmbed(message, VolunteerRole(int(role)), user, False)
         db.addVolunteerSignUp(db.connect(db_file), event.id, user.id, VolunteerRole(int(role)))
         await interaction.followup.send(f"Added {user.display_name} to the show thread as a {VolunteerRole(int(role)).name.lower()} volunteer.")
+        await generateUpcoming()
     except discord.NotFound:
         await interaction.followup.send(f"The specified thread ID is not valid.")
 
@@ -862,6 +881,8 @@ async def setmode(interaction: discord.Interaction, mode: str) -> None:
     # Add existing signups to embed
     for signup in db.getVolunteerSignupsFromEvent(db.connect(db_file), event.id):
         await addUserToEmbed(baseMessage, signup.role, await client.fetch_user(signup.userid), True)
+    # Update upcoming shows
+    await generateUpcoming()
 
     await interaction.response.send_message(f"Set show mode to {mode.lower()}.", ephemeral=True)
 
@@ -895,6 +916,8 @@ async def setvolunteers(interaction: discord.Interaction, bookers: int, doors: i
     event.neededDoors = doors
     event.neededSound = sound
     await updateEvent(event)
+
+    await generateUpcoming()
 
     await interaction.response.send_message(f"Set needed volunteers to {bookers} booker(s), {doors} door volunteer(s), and {sound} sound volunteer(s).", ephemeral=True)
 
